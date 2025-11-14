@@ -34,6 +34,81 @@ export async function pangolinApiRequest(
 	return this.helpers.httpRequestWithAuthentication.call(this, 'pangolinApi', options);
 }
 
+/**
+ * Helper to extract an array from a Pangolin-style response.
+ *
+ * Handles shapes like:
+ *   [ ... ]
+ *   { data: [ ... ] }
+ *   { data: { resources: [ ... ] } }
+ *   { resources: [ ... ] }
+ */
+function extractListFromResponse(
+	response: IDataObject | IDataObject[] | undefined,
+	keys: string[],
+): IDataObject[] {
+	if (!response) return [];
+
+	// Direct array
+	if (Array.isArray(response)) {
+		return response as IDataObject[];
+	}
+
+	const top = response as IDataObject;
+
+	// If `data` itself is an array
+	if (Array.isArray(top.data)) {
+		return top.data as IDataObject[];
+	}
+
+	// Top-level keys, e.g. { resources: [...] }
+	for (const key of keys) {
+		const value = top[key];
+		if (Array.isArray(value)) {
+			return value as IDataObject[];
+		}
+	}
+
+	// Nested in `data`, e.g. { data: { resources: [...] } }
+	if (top.data && typeof top.data === 'object') {
+		const dataObj = top.data as IDataObject;
+
+		if (Array.isArray(dataObj)) {
+			return dataObj as IDataObject[];
+		}
+
+		for (const key of keys) {
+			const value = dataObj[key];
+			if (Array.isArray(value)) {
+				return value as IDataObject[];
+			}
+		}
+	}
+
+	return [];
+}
+
+/**
+ * Load organizations into a dynamic options list.
+ *
+ * Matches your real-world example:
+ * {
+ *   "data": {
+ *     "orgs": [
+ *       {
+ *         "orgId": "homelab",
+ *         "name": "Homelab",
+ *         ...
+ *       }
+ *     ],
+ *     "pagination": { ... }
+ *   },
+ *   "success": true,
+ *   ...
+ * }
+ *
+ * We use `orgId` as the value for subsequent calls.
+ */
 export async function loadOrganizations(
 	this: ILoadOptionsFunctions,
 ): Promise<INodePropertyOptions[]> {
@@ -42,117 +117,153 @@ export async function loadOrganizations(
 			this,
 			'GET',
 			'/v1/orgs',
-		)) as IDataObject | IDataObject[];
+		)) as IDataObject;
 
-		// Pangolin often wraps arrays in { data: [...] }
-		const orgs = Array.isArray(response)
-			? response
-			: Array.isArray((response as IDataObject).data)
-				? ((response as IDataObject).data as IDataObject[])
-				: [];
+		const data = (response.data ?? {}) as IDataObject;
+		const orgsRaw = Array.isArray(data.orgs) ? (data.orgs as IDataObject[]) : [];
 
-		return orgs.map((org) => {
+		const options: INodePropertyOptions[] = [];
+
+		for (const org of orgsRaw) {
+			const id = org.orgId as string | undefined;
+
+			if (!id) {
+				continue;
+			}
+
 			const name =
 				(org.name as string | undefined) ??
-				(org.slug as string | undefined) ??
-				(org.id as string | undefined) ??
-				'Unnamed Organization';
+				id;
 
-			const value =
-				(org.id as string | undefined) ??
-				(org.slug as string | undefined) ??
-				(org.name as string | undefined) ??
-				name;
-
-			return {
+			options.push({
 				name,
-				value,
-			};
-		});
+				value: id,
+			});
+		}
+
+		return options;
 	} catch {
-		// Swallow errors so the UI doesn't break; user can still enter ID via expression
+		// If we can't load orgs, just return empty;
+		// the user can still enter an org ID via expression.
 		return [];
 	}
 }
 
+/**
+ * Load domains for selected organization.
+ * Expected shapes like:
+ * { data: { domains: [ ... ] }, ... }
+ */
 export async function loadDomains(
 	this: ILoadOptionsFunctions,
 ): Promise<INodePropertyOptions[]> {
 	try {
 		const orgId = this.getCurrentNodeParameter('orgId') as string;
-		if (!orgId) return [];
+		if (!orgId) {
+			return [];
+		}
 
 		const response = (await pangolinApiRequest.call(
 			this,
 			'GET',
-			`/v1/orgs/${orgId}/domains`,
+			`/v1/org/${orgId}/domains`,
 		)) as IDataObject | IDataObject[];
 
-		const domains = Array.isArray(response)
-			? response
-			: Array.isArray((response as IDataObject).data)
-				? ((response as IDataObject).data as IDataObject[])
-				: [];
+		const domains = extractListFromResponse(response, ['domains']);
 
-		return domains.map((domain) => {
+		const options: INodePropertyOptions[] = [];
+
+		for (const domain of domains) {
+			const id =
+				(domain.domainId as string | number | undefined) ??
+				(domain.id as string | number | undefined) ??
+				(domain.domain as string | number | undefined) ??
+				(domain.hostname as string | number | undefined);
+
+			if (id === undefined || id === null || id === '') {
+				continue;
+			}
+
+			const idStr = String(id);
+
 			const name =
 				(domain.name as string | undefined) ??
 				(domain.domain as string | undefined) ??
 				(domain.hostname as string | undefined) ??
-				(domain.id as string | undefined) ??
-				'Domain';
+				idStr;
 
-			const value =
-				(domain.id as string | undefined) ??
-				(domain.domain as string | undefined) ??
-				(domain.name as string | undefined) ??
-				name;
-
-			return {
+			options.push({
 				name,
-				value,
-			};
-		});
+				value: idStr,
+			});
+		}
+
+		return options;
 	} catch {
 		return [];
 	}
 }
 
+/**
+ * Load resources for selected organization.
+ *
+ * Matches your real-world example:
+ * {
+ *   "data": {
+ *     "resources": [
+ *       { "resourceId": 1, "name": "GIT", ... },
+ *       ...
+ *     ],
+ *     "pagination": { ... }
+ *   },
+ *   "success": true,
+ *   ...
+ * }
+ */
 export async function loadResources(
 	this: ILoadOptionsFunctions,
 ): Promise<INodePropertyOptions[]> {
 	try {
 		const orgId = this.getCurrentNodeParameter('orgId') as string;
-		if (!orgId) return [];
+		if (!orgId) {
+			return [];
+		}
 
 		const response = (await pangolinApiRequest.call(
 			this,
 			'GET',
-			`/v1/orgs/${orgId}/resources`,
+			`/v1/org/${orgId}/resources`,
 		)) as IDataObject | IDataObject[];
 
-		const resources = Array.isArray(response)
-			? response
-			: Array.isArray((response as IDataObject).data)
-				? ((response as IDataObject).data as IDataObject[])
-				: [];
+		const resources = extractListFromResponse(response, ['resources']);
 
-		return resources.map((resource) => {
+		const options: INodePropertyOptions[] = [];
+
+		for (const resource of resources) {
+			const id =
+				(resource.resourceId as string | number | undefined) ??
+				(resource.id as string | number | undefined) ??
+				(resource.niceId as string | number | undefined) ??
+				(resource.name as string | number | undefined);
+
+			if (id === undefined || id === null || id === '') {
+				continue;
+			}
+
+			const idStr = String(id);
+
 			const name =
 				(resource.name as string | undefined) ??
-				(resource.id as string | undefined) ??
-				'Resource';
+				(resource.fullDomain as string | undefined) ??
+				idStr;
 
-			const value =
-				(resource.id as string | undefined) ??
-				(resource.name as string | undefined) ??
-				name;
-
-			return {
+			options.push({
 				name,
-				value,
-			};
-		});
+				value: idStr,
+			});
+		}
+
+		return options;
 	} catch {
 		return [];
 	}
