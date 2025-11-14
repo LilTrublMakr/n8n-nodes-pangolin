@@ -1,12 +1,19 @@
-import type { ICredentialType, INodeProperties } from 'n8n-workflow';
+import type {
+	ICredentialType,
+	INodeProperties,
+	Icon,
+	IAuthenticateGeneric,
+} from 'n8n-workflow';
 
 export class PangolinApi implements ICredentialType {
 	name = 'pangolinApi';
 	displayName = 'Pangolin API';
-	// icons for credentials resolve from the credentials folder:
-	icon = 'file:../icons/pangolin.svg';
-	// Optional, helps users discover the right docs page
-	documentationUrl = 'https://docs.pangolin.net/manage/integration-api';
+
+	// Type is Icon (not string)
+	icon: Icon = 'file:../icons/pangolin.svg';
+
+	// Optional – keep or remove as you like
+	documentationUrl = 'https://docs.n8n.io/integrations/creating-nodes/overview/';
 
 	properties: INodeProperties[] = [
 		{
@@ -26,13 +33,13 @@ export class PangolinApi implements ICredentialType {
 			typeOptions: { password: true },
 			default: '',
 			description:
-				'Pangolin Integration API key. Created in Pangolin under <b>Organization → API Keys</b> (or <b>Server Admin → API Keys</b> for root keys).',
+				'Pangolin Integration API key created in Pangolin.',
 			required: true,
 		},
 	];
 
-	// Attach Authorization header for every request
-	authenticate = {
+	// Make sure `type` is the literal "generic"
+	authenticate: IAuthenticateGeneric = {
 		type: 'generic',
 		properties: {
 			headers: {
@@ -41,8 +48,6 @@ export class PangolinApi implements ICredentialType {
 		},
 	};
 
-	// Lightweight connection test – ping Swagger UI (exists on /v1/docs)
-	// Works whether docs are public or require auth; we send auth anyway.
 	test: ICredentialType['test'] = {
 		request: {
 			baseURL: '={{$credentials.baseUrl}}',

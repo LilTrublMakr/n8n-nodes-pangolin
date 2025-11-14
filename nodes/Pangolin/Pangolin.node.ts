@@ -5,7 +5,7 @@ import type {
 	INodeTypeDescription,
 	IExecuteFunctions,
 } from 'n8n-workflow';
-import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
+import { NodeOperationError } from 'n8n-workflow';
 import { pangolinApiRequest } from './GenericFunctions';
 
 export class Pangolin implements INodeType {
@@ -21,8 +21,9 @@ export class Pangolin implements INodeType {
 		defaults: {
 			name: 'Pangolin',
 		},
-		inputs: [NodeConnectionType.Main],
-		outputs: [NodeConnectionType.Main],
+		// Use string literals here
+		inputs: ['main'],
+		outputs: ['main'],
 		credentials: [
 			{
 				name: 'pangolinApi',
