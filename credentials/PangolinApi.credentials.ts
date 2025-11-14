@@ -51,7 +51,7 @@ export class PangolinApi implements ICredentialType {
 	test: ICredentialType['test'] = {
 		request: {
 			baseURL: '={{$credentials.baseUrl}}',
-			url: '/v1/docs',
+			url: '/v1/',
 			method: 'GET',
 		},
 	};
