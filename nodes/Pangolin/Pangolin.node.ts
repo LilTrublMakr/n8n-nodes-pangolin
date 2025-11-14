@@ -57,7 +57,7 @@ export class Pangolin implements INodeType {
 				noDataExpression: true,
 				default: 'list',
 				options: [
-					// Sorted alphabetically by name
+					// Sorted alphabetically by name (lint requirement)
 					{ name: 'Create', value: 'create', action: 'Create a resource' },
 					{ name: 'Delete', value: 'delete', action: 'Delete a resource' },
 					{ name: 'Get', value: 'get', action: 'Get a resource' },
@@ -86,7 +86,16 @@ export class Pangolin implements INodeType {
 				displayOptions: {
 					show: {
 						resource: ['resource', 'domain', 'client', 'api'],
-						operation: ['list', 'get', 'create', 'update', 'delete', 'listDomains', 'listClients', 'request'],
+						operation: [
+							'list',
+							'get',
+							'create',
+							'update',
+							'delete',
+							'listDomains',
+							'listClients',
+							'request',
+						],
 					},
 				},
 			},
@@ -206,7 +215,7 @@ export class Pangolin implements INodeType {
 				name: 'endpoint',
 				type: 'string',
 				default: '/v1/',
-				placeholder: '/v1/resources',
+				placeholder: '/v1/orgs',
 				required: true,
 				displayOptions: {
 					show: {
@@ -227,12 +236,28 @@ export class Pangolin implements INodeType {
 						name: 'parameter',
 						displayName: 'Parameter',
 						values: [
-							{ displayName: 'Key', name: 'name', type: 'string', default: '', required: true },
-							{ displayName: 'Value', name: 'value', type: 'string', default: '' },
+							{
+								displayName: 'Key',
+								name: 'name',
+								type: 'string',
+								default: '',
+								required: true,
+							},
+							{
+								displayName: 'Value',
+								name: 'value',
+								type: 'string',
+								default: '',
+							},
 						],
 					},
 				],
-				displayOptions: { show: { resource: ['api'], operation: ['request'] } },
+				displayOptions: {
+					show: {
+						resource: ['api'],
+						operation: ['request'],
+					},
+				},
 			},
 			{
 				displayName: 'Headers',
@@ -246,12 +271,28 @@ export class Pangolin implements INodeType {
 						name: 'header',
 						displayName: 'Header',
 						values: [
-							{ displayName: 'Name', name: 'name', type: 'string', default: '', required: true },
-							{ displayName: 'Value', name: 'value', type: 'string', default: '' },
+							{
+								displayName: 'Name',
+								name: 'name',
+								type: 'string',
+								default: '',
+								required: true,
+							},
+							{
+								displayName: 'Value',
+								name: 'value',
+								type: 'string',
+								default: '',
+							},
 						],
 					},
 				],
-				displayOptions: { show: { resource: ['api'], operation: ['request'] } },
+				displayOptions: {
+					show: {
+						resource: ['api'],
+						operation: ['request'],
+					},
+				},
 			},
 			{
 				displayName: 'Send Body',
@@ -308,8 +349,19 @@ export class Pangolin implements INodeType {
 						name: 'field',
 						displayName: 'Field',
 						values: [
-							{ displayName: 'Field Name', name: 'name', type: 'string', default: '', required: true },
-							{ displayName: 'Field Value', name: 'value', type: 'string', default: '' },
+							{
+								displayName: 'Field Name',
+								name: 'name',
+								type: 'string',
+								default: '',
+								required: true,
+							},
+							{
+								displayName: 'Field Value',
+								name: 'value',
+								type: 'string',
+								default: '',
+							},
 						],
 					},
 				],
@@ -345,7 +397,12 @@ export class Pangolin implements INodeType {
 						description: 'Max number of results to return',
 					},
 				],
-				displayOptions: { show: { resource: ['api'], operation: ['request'] } },
+				displayOptions: {
+					show: {
+						resource: ['api'],
+						operation: ['request'],
+					},
+				},
 			},
 		],
 	};
@@ -373,12 +430,19 @@ export class Pangolin implements INodeType {
 
 					if (operation === 'list') {
 						const options = this.getNodeParameter('options', i, {}) as IDataObject;
-						const res = await pangolinApiRequest.call(this, 'GET', `/v1/orgs/${orgId}/resources`);
+						const res = await pangolinApiRequest.call(
+							this,
+							'GET',
+							`/v1/org/${orgId}/resources`,
+						);
 						const arr = Array.isArray(res) ? res : [res];
-						const out = options.returnAll === false
-							? arr.slice(0, Number(options.limit ?? 50))
-							: arr;
-						for (const r of out) returnData.push({ json: (r ?? {}) as IDataObject });
+						const out =
+							options.returnAll === false
+								? arr.slice(0, Number(options.limit ?? 50))
+								: arr;
+						for (const r of out) {
+							returnData.push({ json: (r ?? {}) as IDataObject });
+						}
 					}
 
 					if (operation === 'get') {
@@ -386,7 +450,7 @@ export class Pangolin implements INodeType {
 						const res = await pangolinApiRequest.call(
 							this,
 							'GET',
-							`/v1/orgs/${orgId}/resources/${resourceId}`,
+							`/v1/org/${orgId}/resources/${resourceId}`,
 						);
 						returnData.push({ json: (res ?? {}) as IDataObject });
 					}
@@ -401,7 +465,7 @@ export class Pangolin implements INodeType {
 						const res = await pangolinApiRequest.call(
 							this,
 							'POST',
-							`/v1/orgs/${orgId}/resources`,
+							`/v1/org/${orgId}/resources`,
 							body,
 						);
 						returnData.push({ json: (res ?? {}) as IDataObject });
@@ -418,7 +482,7 @@ export class Pangolin implements INodeType {
 						const res = await pangolinApiRequest.call(
 							this,
 							'PATCH',
-							`/v1/orgs/${orgId}/resources/${resourceId}`,
+							`/v1/org/${orgId}/resources/${resourceId}`,
 							body,
 						);
 						returnData.push({ json: (res ?? {}) as IDataObject });
@@ -429,7 +493,7 @@ export class Pangolin implements INodeType {
 						const res = await pangolinApiRequest.call(
 							this,
 							'DELETE',
-							`/v1/orgs/${orgId}/resources/${resourceId}`,
+							`/v1/org/${orgId}/resources/${resourceId}`,
 						);
 						returnData.push({ json: (res ?? {}) as IDataObject });
 					}
@@ -441,12 +505,19 @@ export class Pangolin implements INodeType {
 				if (resource === 'domain' && operation === 'listDomains') {
 					const orgId = this.getNodeParameter('orgId', i) as string;
 					const options = this.getNodeParameter('options', i, {}) as IDataObject;
-					const res = await pangolinApiRequest.call(this, 'GET', `/v1/orgs/${orgId}/domains`);
+					const res = await pangolinApiRequest.call(
+						this,
+						'GET',
+						`/v1/org/${orgId}/domains`,
+					);
 					const arr = Array.isArray(res) ? res : [res];
-					const out = options.returnAll === false
-						? arr.slice(0, Number(options.limit ?? 50))
-						: arr;
-					for (const d of out) returnData.push({ json: (d ?? {}) as IDataObject });
+					const out =
+						options.returnAll === false
+							? arr.slice(0, Number(options.limit ?? 50))
+							: arr;
+					for (const d of out) {
+						returnData.push({ json: (d ?? {}) as IDataObject });
+					}
 					continue;
 				}
 
@@ -454,12 +525,19 @@ export class Pangolin implements INodeType {
 				if (resource === 'client' && operation === 'listClients') {
 					const orgId = this.getNodeParameter('orgId', i) as string;
 					const options = this.getNodeParameter('options', i, {}) as IDataObject;
-					const res = await pangolinApiRequest.call(this, 'GET', `/v1/orgs/${orgId}/clients`);
+					const res = await pangolinApiRequest.call(
+						this,
+						'GET',
+						`/v1/org/${orgId}/clients`,
+					);
 					const arr = Array.isArray(res) ? res : [res];
-					const out = options.returnAll === false
-						? arr.slice(0, Number(options.limit ?? 50))
-						: arr;
-					for (const c of out) returnData.push({ json: (c ?? {}) as IDataObject });
+					const out =
+						options.returnAll === false
+							? arr.slice(0, Number(options.limit ?? 50))
+							: arr;
+					for (const c of out) {
+						returnData.push({ json: (c ?? {}) as IDataObject });
+					}
 					continue;
 				}
 
@@ -479,7 +557,9 @@ export class Pangolin implements INodeType {
 					};
 					const qs: IDataObject = {};
 					for (const p of queryParametersUi.parameter ?? []) {
-						if (p?.name) qs[p.name] = p.value ?? '';
+						if (p?.name) {
+							qs[p.name] = p.value ?? '';
+						}
 					}
 
 					// Extra headers
@@ -488,7 +568,9 @@ export class Pangolin implements INodeType {
 					};
 					const headers: IDataObject = {};
 					for (const h of headersUi.header ?? []) {
-						if (h?.name) headers[h.name] = h.value ?? '';
+						if (h?.name) {
+							headers[h.name] = h.value ?? '';
+						}
 					}
 
 					// Body
@@ -504,7 +586,9 @@ export class Pangolin implements INodeType {
 							};
 							body = {};
 							for (const f of bodyUi.field ?? []) {
-								if (f?.name) body[f.name] = f.value ?? '';
+								if (f?.name) {
+									body[f.name] = f.value ?? '';
+								}
 							}
 						}
 					}
@@ -535,13 +619,17 @@ export class Pangolin implements INodeType {
 					continue;
 				}
 
-				throw new NodeOperationError(this.getNode(), 'Unsupported operation', { itemIndex: i });
+				throw new NodeOperationError(this.getNode(), 'Unsupported operation', {
+					itemIndex: i,
+				});
 			} catch (err) {
 				if (this.continueOnFail()) {
 					returnData.push({ json: { error: (err as Error).message } });
 					continue;
 				}
-				throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: i });
+				throw new NodeOperationError(this.getNode(), (err as Error).message, {
+					itemIndex: i,
+				});
 			}
 		}
 
