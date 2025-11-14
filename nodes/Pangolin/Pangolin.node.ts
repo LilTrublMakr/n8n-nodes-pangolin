@@ -6,7 +6,7 @@ import type {
 	IExecuteFunctions,
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
-import { pangolinApiRequest } from './GenericFunctions';
+import { pangolinApiRequest, loadOrganizations, loadDomains, loadResources } from './GenericFunctions';
 
 export class Pangolin implements INodeType {
 	description: INodeTypeDescription = {
@@ -21,7 +21,6 @@ export class Pangolin implements INodeType {
 		defaults: {
 			name: 'Pangolin',
 		},
-		// Use string literals here
 		inputs: ['main'],
 		outputs: ['main'],
 		credentials: [
@@ -39,12 +38,12 @@ export class Pangolin implements INodeType {
 				name: 'resource',
 				type: 'options',
 				noDataExpression: true,
-				default: 'api',
+				default: 'resource',
 				options: [
-					{
-						name: 'API Call',
-						value: 'api',
-					},
+					{ name: 'Resource', value: 'resource' },
+					{ name: 'Domain', value: 'domain' },
+					{ name: 'Client', value: 'client' },
+					{ name: 'API Call (Raw)', value: 'api' },
 				],
 			},
 
@@ -56,23 +55,131 @@ export class Pangolin implements INodeType {
 				name: 'operation',
 				type: 'options',
 				noDataExpression: true,
-				default: 'request',
+				default: 'list',
 				options: [
-					{
-						name: 'Request',
-						value: 'request',
-						action: 'Request an api',
-					},
+					// Sorted alphabetically by name
+					{ name: 'Create', value: 'create', action: 'Create a resource' },
+					{ name: 'Delete', value: 'delete', action: 'Delete a resource' },
+					{ name: 'Get', value: 'get', action: 'Get a resource' },
+					{ name: 'List', value: 'list', action: 'List resources' },
+					{ name: 'List Clients', value: 'listClients', action: 'List clients' },
+					{ name: 'List Domains', value: 'listDomains', action: 'List domains' },
+					{ name: 'Request (Raw)', value: 'request', action: 'Request an api' },
+					{ name: 'Update', value: 'update', action: 'Update a resource' },
 				],
+			},
+
+			// ------------------------------------------------------------------
+			// Common: Organization scope
+			// ------------------------------------------------------------------
+			{
+				displayName: 'Organization Name or ID',
+				name: 'orgId',
+				type: 'options',
+				typeOptions: {
+					loadOptionsMethod: 'loadOrganizations',
+				},
+				default: '',
+				required: true,
+				description:
+					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 				displayOptions: {
 					show: {
-						resource: ['api'],
+						resource: ['resource', 'domain', 'client', 'api'],
+						operation: ['list', 'get', 'create', 'update', 'delete', 'listDomains', 'listClients', 'request'],
 					},
 				},
 			},
 
 			// ------------------------------------------------------------------
-			// Request config (generic)
+			// Resource-specific fields
+			// ------------------------------------------------------------------
+			{
+				displayName: 'Resource Name or ID',
+				name: 'resourceId',
+				type: 'options',
+				typeOptions: {
+					loadOptionsMethod: 'loadResources',
+				},
+				default: '',
+				required: true,
+				description:
+					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+				displayOptions: {
+					show: {
+						resource: ['resource'],
+						operation: ['get', 'update', 'delete'],
+					},
+				},
+			},
+			{
+				displayName: 'Domain Name or ID',
+				name: 'domainId',
+				type: 'options',
+				typeOptions: {
+					loadOptionsMethod: 'loadDomains',
+				},
+				default: '',
+				description:
+					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+				displayOptions: {
+					show: {
+						resource: ['resource'],
+						operation: ['create', 'update'],
+					},
+				},
+			},
+			{
+				displayName: 'Body (JSON)',
+				name: 'resourceBody',
+				type: 'json',
+				default: '{}',
+				displayOptions: {
+					show: {
+						resource: ['resource'],
+						operation: ['create', 'update'],
+					},
+				},
+				description:
+					'JSON body for resource create/update (e.g. name, protocol, proxyPort, domainId, etc.)',
+			},
+
+			// ------------------------------------------------------------------
+			// Domain / Client list Options
+			// ------------------------------------------------------------------
+			{
+				displayName: 'Options',
+				name: 'options',
+				type: 'collection',
+				default: {},
+				placeholder: 'Add Option',
+				options: [
+					{
+						displayName: 'Return All',
+						name: 'returnAll',
+						type: 'boolean',
+						default: true,
+						description: 'Whether to return all results or only up to a given limit',
+					},
+					{
+						displayName: 'Limit',
+						name: 'limit',
+						type: 'number',
+						typeOptions: { minValue: 1, maxValue: 100000 },
+						default: 50,
+						description: 'Max number of results to return',
+					},
+				],
+				displayOptions: {
+					show: {
+						resource: ['resource', 'domain', 'client'],
+						operation: ['list', 'listDomains', 'listClients'],
+					},
+				},
+			},
+
+			// ------------------------------------------------------------------
+			// RAW API request
 			// ------------------------------------------------------------------
 			{
 				displayName: 'Method',
@@ -113,78 +220,38 @@ export class Pangolin implements INodeType {
 				name: 'queryParametersUi',
 				placeholder: 'Add Parameter',
 				type: 'fixedCollection',
-				typeOptions: {
-					multipleValues: true,
-				},
+				typeOptions: { multipleValues: true },
 				default: {},
 				options: [
 					{
 						name: 'parameter',
 						displayName: 'Parameter',
 						values: [
-							{
-								displayName: 'Key',
-								name: 'name',
-								type: 'string',
-								default: '',
-								placeholder: 'limit',
-								required: true,
-							},
-							{
-								displayName: 'Value',
-								name: 'value',
-								type: 'string',
-								default: '',
-								placeholder: '50',
-							},
+							{ displayName: 'Key', name: 'name', type: 'string', default: '', required: true },
+							{ displayName: 'Value', name: 'value', type: 'string', default: '' },
 						],
 					},
 				],
-				displayOptions: {
-					show: {
-						resource: ['api'],
-						operation: ['request'],
-					},
-				},
+				displayOptions: { show: { resource: ['api'], operation: ['request'] } },
 			},
 			{
 				displayName: 'Headers',
 				name: 'headersUi',
 				placeholder: 'Add Header',
 				type: 'fixedCollection',
-				typeOptions: {
-					multipleValues: true,
-				},
+				typeOptions: { multipleValues: true },
 				default: {},
 				options: [
 					{
 						name: 'header',
 						displayName: 'Header',
 						values: [
-							{
-								displayName: 'Name',
-								name: 'name',
-								type: 'string',
-								default: '',
-								placeholder: 'X-Custom-Header',
-								required: true,
-							},
-							{
-								displayName: 'Value',
-								name: 'value',
-								type: 'string',
-								default: '',
-								placeholder: 'value',
-							},
+							{ displayName: 'Name', name: 'name', type: 'string', default: '', required: true },
+							{ displayName: 'Value', name: 'value', type: 'string', default: '' },
 						],
 					},
 				],
-				displayOptions: {
-					show: {
-						resource: ['api'],
-						operation: ['request'],
-					},
-				},
+				displayOptions: { show: { resource: ['api'], operation: ['request'] } },
 			},
 			{
 				displayName: 'Send Body',
@@ -234,30 +301,15 @@ export class Pangolin implements INodeType {
 				name: 'bodyUi',
 				placeholder: 'Add Field',
 				type: 'fixedCollection',
-				typeOptions: {
-					multipleValues: true,
-				},
+				typeOptions: { multipleValues: true },
 				default: {},
 				options: [
 					{
 						name: 'field',
 						displayName: 'Field',
 						values: [
-							{
-								displayName: 'Field Name',
-								name: 'name',
-								type: 'string',
-								default: '',
-								placeholder: 'name',
-								required: true,
-							},
-							{
-								displayName: 'Field Value',
-								name: 'value',
-								type: 'string',
-								default: '',
-								placeholder: 'example',
-							},
+							{ displayName: 'Field Name', name: 'name', type: 'string', default: '', required: true },
+							{ displayName: 'Field Value', name: 'value', type: 'string', default: '' },
 						],
 					},
 				],
@@ -272,10 +324,10 @@ export class Pangolin implements INodeType {
 			},
 			{
 				displayName: 'Options',
-				name: 'options',
+				name: 'rawOptions',
 				type: 'collection',
-				placeholder: 'Add Option',
 				default: {},
+				placeholder: 'Add Option',
 				options: [
 					{
 						displayName: 'Return All',
@@ -293,14 +345,17 @@ export class Pangolin implements INodeType {
 						description: 'Max number of results to return',
 					},
 				],
-				displayOptions: {
-					show: {
-						resource: ['api'],
-						operation: ['request'],
-					},
-				},
+				displayOptions: { show: { resource: ['api'], operation: ['request'] } },
 			},
 		],
+	};
+
+	methods = {
+		loadOptions: {
+			loadOrganizations,
+			loadDomains,
+			loadResources,
+		},
 	};
 
 	async execute(this: IExecuteFunctions) {
@@ -309,70 +364,181 @@ export class Pangolin implements INodeType {
 
 		for (let i = 0; i < items.length; i++) {
 			try {
-				const method = this.getNodeParameter('method', i) as
-					| 'GET'
-					| 'POST'
-					| 'PUT'
-					| 'PATCH'
-					| 'DELETE';
-				const endpoint = this.getNodeParameter('endpoint', i) as string;
+				const resource = this.getNodeParameter('resource', i) as string;
+				const operation = this.getNodeParameter('operation', i) as string;
 
-				// Query params
-				const queryParametersUi = this.getNodeParameter('queryParametersUi', i, {}) as {
-					parameter?: Array<{ name?: string; value?: string }>;
-				};
-				const qs: IDataObject = {};
-				for (const p of queryParametersUi.parameter ?? []) {
-					if (p?.name) qs[p.name] = p.value ?? '';
+				// ---------- Predefined: Resource ----------
+				if (resource === 'resource') {
+					const orgId = this.getNodeParameter('orgId', i) as string;
+
+					if (operation === 'list') {
+						const options = this.getNodeParameter('options', i, {}) as IDataObject;
+						const res = await pangolinApiRequest.call(this, 'GET', `/v1/orgs/${orgId}/resources`);
+						const arr = Array.isArray(res) ? res : [res];
+						const out = options.returnAll === false
+							? arr.slice(0, Number(options.limit ?? 50))
+							: arr;
+						for (const r of out) returnData.push({ json: (r ?? {}) as IDataObject });
+					}
+
+					if (operation === 'get') {
+						const resourceId = this.getNodeParameter('resourceId', i) as string;
+						const res = await pangolinApiRequest.call(
+							this,
+							'GET',
+							`/v1/orgs/${orgId}/resources/${resourceId}`,
+						);
+						returnData.push({ json: (res ?? {}) as IDataObject });
+					}
+
+					if (operation === 'create') {
+						const body = (this.getNodeParameter('resourceBody', i) as IDataObject) || {};
+						const domainId = this.getNodeParameter('domainId', i, '') as string;
+						if (domainId && typeof body === 'object') {
+							(body as IDataObject).domainId = domainId;
+						}
+
+						const res = await pangolinApiRequest.call(
+							this,
+							'POST',
+							`/v1/orgs/${orgId}/resources`,
+							body,
+						);
+						returnData.push({ json: (res ?? {}) as IDataObject });
+					}
+
+					if (operation === 'update') {
+						const resourceId = this.getNodeParameter('resourceId', i) as string;
+						const body = (this.getNodeParameter('resourceBody', i) as IDataObject) || {};
+						const maybeDomain = this.getNodeParameter('domainId', i, '') as string;
+						if (maybeDomain && typeof body === 'object') {
+							(body as IDataObject).domainId = maybeDomain;
+						}
+
+						const res = await pangolinApiRequest.call(
+							this,
+							'PATCH',
+							`/v1/orgs/${orgId}/resources/${resourceId}`,
+							body,
+						);
+						returnData.push({ json: (res ?? {}) as IDataObject });
+					}
+
+					if (operation === 'delete') {
+						const resourceId = this.getNodeParameter('resourceId', i) as string;
+						const res = await pangolinApiRequest.call(
+							this,
+							'DELETE',
+							`/v1/orgs/${orgId}/resources/${resourceId}`,
+						);
+						returnData.push({ json: (res ?? {}) as IDataObject });
+					}
+
+					continue;
 				}
 
-				// Extra headers
-				const headersUi = this.getNodeParameter('headersUi', i, {}) as {
-					header?: Array<{ name?: string; value?: string }>;
-				};
-				const headers: IDataObject = {};
-				for (const h of headersUi.header ?? []) {
-					if (h?.name) headers[h.name] = h.value ?? '';
+				// ---------- Predefined: Domain ----------
+				if (resource === 'domain' && operation === 'listDomains') {
+					const orgId = this.getNodeParameter('orgId', i) as string;
+					const options = this.getNodeParameter('options', i, {}) as IDataObject;
+					const res = await pangolinApiRequest.call(this, 'GET', `/v1/orgs/${orgId}/domains`);
+					const arr = Array.isArray(res) ? res : [res];
+					const out = options.returnAll === false
+						? arr.slice(0, Number(options.limit ?? 50))
+						: arr;
+					for (const d of out) returnData.push({ json: (d ?? {}) as IDataObject });
+					continue;
 				}
 
-				// Body
-				let body: IDataObject | undefined;
-				const sendBody = this.getNodeParameter('sendBody', i, false) as boolean;
-				if (sendBody) {
-					const jsonParameters = this.getNodeParameter('jsonParameters', i, true) as boolean;
-					if (jsonParameters) {
-						const raw = this.getNodeParameter('bodyJson', i) as IDataObject;
-						body = raw ?? {};
-					} else {
-						const bodyUi = this.getNodeParameter('bodyUi', i, {}) as {
-							field?: Array<{ name?: string; value?: string }>;
-						};
-						body = {};
-						for (const f of bodyUi.field ?? []) {
-							if (f?.name) body[f.name] = f.value ?? '';
+				// ---------- Predefined: Client ----------
+				if (resource === 'client' && operation === 'listClients') {
+					const orgId = this.getNodeParameter('orgId', i) as string;
+					const options = this.getNodeParameter('options', i, {}) as IDataObject;
+					const res = await pangolinApiRequest.call(this, 'GET', `/v1/orgs/${orgId}/clients`);
+					const arr = Array.isArray(res) ? res : [res];
+					const out = options.returnAll === false
+						? arr.slice(0, Number(options.limit ?? 50))
+						: arr;
+					for (const c of out) returnData.push({ json: (c ?? {}) as IDataObject });
+					continue;
+				}
+
+				// ---------- Raw API ----------
+				if (resource === 'api' && operation === 'request') {
+					const method = this.getNodeParameter('method', i) as
+						| 'GET'
+						| 'POST'
+						| 'PUT'
+						| 'PATCH'
+						| 'DELETE';
+					const endpoint = this.getNodeParameter('endpoint', i) as string;
+
+					// Query params
+					const queryParametersUi = this.getNodeParameter('queryParametersUi', i, {}) as {
+						parameter?: Array<{ name?: string; value?: string }>;
+					};
+					const qs: IDataObject = {};
+					for (const p of queryParametersUi.parameter ?? []) {
+						if (p?.name) qs[p.name] = p.value ?? '';
+					}
+
+					// Extra headers
+					const headersUi = this.getNodeParameter('headersUi', i, {}) as {
+						header?: Array<{ name?: string; value?: string }>;
+					};
+					const headers: IDataObject = {};
+					for (const h of headersUi.header ?? []) {
+						if (h?.name) headers[h.name] = h.value ?? '';
+					}
+
+					// Body
+					let body: IDataObject | undefined;
+					const sendBody = this.getNodeParameter('sendBody', i, false) as boolean;
+					if (sendBody) {
+						const jsonParameters = this.getNodeParameter('jsonParameters', i, true) as boolean;
+						if (jsonParameters) {
+							body = (this.getNodeParameter('bodyJson', i) as IDataObject) ?? {};
+						} else {
+							const bodyUi = this.getNodeParameter('bodyUi', i, {}) as {
+								field?: Array<{ name?: string; value?: string }>;
+							};
+							body = {};
+							for (const f of bodyUi.field ?? []) {
+								if (f?.name) body[f.name] = f.value ?? '';
+							}
 						}
 					}
-				}
 
-				const response = await pangolinApiRequest.call(this, method, endpoint, body ?? {}, qs, headers);
+					const response = await pangolinApiRequest.call(
+						this,
+						method,
+						endpoint,
+						body ?? {},
+						qs,
+						headers,
+					);
 
-				// Shape output
-				const options = this.getNodeParameter('options', i, {}) as IDataObject;
-				const returnAll = options.returnAll !== false;
+					const rawOptions = this.getNodeParameter('rawOptions', i, {}) as IDataObject;
+					const returnAll = rawOptions.returnAll !== false;
 
-				if (Array.isArray(response)) {
-					const arr = returnAll ? response : response.slice(0, Number(options.limit ?? 50));
-					for (const entry of arr) {
-						returnData.push({ json: (entry ?? {}) as IDataObject });
+					if (Array.isArray(response)) {
+						const arr = returnAll
+							? response
+							: response.slice(0, Number(rawOptions.limit ?? 50));
+						for (const entry of arr) {
+							returnData.push({ json: (entry ?? {}) as IDataObject });
+						}
+					} else {
+						returnData.push({ json: (response ?? {}) as IDataObject });
 					}
-				} else {
-					returnData.push({ json: (response ?? {}) as IDataObject });
+
+					continue;
 				}
+
+				throw new NodeOperationError(this.getNode(), 'Unsupported operation', { itemIndex: i });
 			} catch (err) {
 				if (this.continueOnFail()) {
-					returnData.push({
-						json: { error: (err as Error).message },
-					});
+					returnData.push({ json: { error: (err as Error).message } });
 					continue;
 				}
 				throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: i });
