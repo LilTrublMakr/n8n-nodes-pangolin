@@ -126,14 +126,9 @@ export async function loadOrganizations(
 
 		for (const org of orgsRaw) {
 			const id = org.orgId as string | undefined;
+			if (!id) continue;
 
-			if (!id) {
-				continue;
-			}
-
-			const name =
-				(org.name as string | undefined) ??
-				id;
+			const name = (org.name as string | undefined) ?? id;
 
 			options.push({
 				name,
@@ -219,6 +214,13 @@ export async function loadDomains(
  *   "success": true,
  *   ...
  * }
+ *
+ * IMPORTANT: the option value is ALWAYS the numeric `resourceId`,
+ * so calls to /resource/{resourceId} or /v1/org/{orgId}/resources/{resourceId}
+ * use the correct ID.
+ *
+ * The label now includes the org ID so the dropdown clearly shows
+ * "org resources", e.g. "homelab – GIT (#1)".
  */
 export async function loadResources(
 	this: ILoadOptionsFunctions,
@@ -240,11 +242,8 @@ export async function loadResources(
 		const options: INodePropertyOptions[] = [];
 
 		for (const resource of resources) {
-			const id =
-				(resource.resourceId as string | number | undefined) ??
-				(resource.id as string | number | undefined) ??
-				(resource.niceId as string | number | undefined) ??
-				(resource.name as string | number | undefined);
+			// Always use resourceId as the value
+			const id = resource.resourceId as number | string | undefined;
 
 			if (id === undefined || id === null || id === '') {
 				continue;
@@ -257,8 +256,9 @@ export async function loadResources(
 				(resource.fullDomain as string | undefined) ??
 				idStr;
 
+			// 👇 This is the main change: include orgId in the label
 			options.push({
-				name,
+				name: `${orgId} – ${name} (#${idStr})`,
 				value: idStr,
 			});
 		}
