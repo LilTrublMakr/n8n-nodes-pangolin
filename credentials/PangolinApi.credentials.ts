@@ -20,10 +20,10 @@ export class PangolinApi implements ICredentialType {
 			displayName: 'Base URL',
 			name: 'baseUrl',
 			type: 'string',
-			default: 'https://api.your-domain.com',
+			default: '',
 			placeholder: 'https://api.your-domain.com',
 			description:
-				'Root URL of your Pangolin API (self-hosted), without a trailing slash. Example: <code>https://api.example.com</code>',
+				"Root URL of your Pangolin API (self-hosted), without a trailing slash. Example: <code>https://api.example.com</code>. For more information and how to activate Pangolin's integration API, please see: https://docs.pangolin.net/manage/integration-api",
 			required: true,
 		},
 		{
@@ -33,7 +33,7 @@ export class PangolinApi implements ICredentialType {
 			typeOptions: { password: true },
 			default: '',
 			description:
-				'Pangolin Integration API key created in Pangolin.',
+				'Pangolin Integration API key created in Pangolin. As of Nov 2025, you must create a root key from the server admin panel.',
 			required: true,
 		},
 	];
