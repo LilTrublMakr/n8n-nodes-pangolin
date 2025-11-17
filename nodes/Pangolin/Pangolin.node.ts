@@ -6,7 +6,7 @@ import type {
 	IExecuteFunctions,
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
-import { pangolinApiRequest, loadOrganizations, loadDomains, loadResources } from './GenericFunctions';
+import { pangolinApiRequest, loadDomains } from './GenericFunctions';
 
 export class Pangolin implements INodeType {
 	description: INodeTypeDescription = {
@@ -70,19 +70,16 @@ export class Pangolin implements INodeType {
 			},
 
 			// ------------------------------------------------------------------
-			// Common: Organization scope
+			// Common: Organization scope (text field)
 			// ------------------------------------------------------------------
 			{
-				displayName: 'Organization Name or ID',
+				displayName: 'Organization ID',
 				name: 'orgId',
-				type: 'options',
-				typeOptions: {
-					loadOptionsMethod: 'loadOrganizations',
-				},
+				type: 'string',
 				default: '',
 				required: true,
 				description:
-					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+					'Organization ID from Pangolin (for example, <code>homelab</code>). You can set this from a previous node using an expression.',
 				displayOptions: {
 					show: {
 						resource: ['resource', 'domain', 'client', 'api'],
@@ -101,19 +98,16 @@ export class Pangolin implements INodeType {
 			},
 
 			// ------------------------------------------------------------------
-			// Resource-specific fields
+			// Resource-specific fields (text ID)
 			// ------------------------------------------------------------------
 			{
-				displayName: 'Resource Name or ID',
+				displayName: 'Resource ID',
 				name: 'resourceId',
-				type: 'options',
-				typeOptions: {
-					loadOptionsMethod: 'loadResources',
-				},
+				type: 'string',
 				default: '',
 				required: true,
 				description:
-					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+					'Numeric resourceId from Pangolin (for example, <code>1</code>). Typically provided by a previous webhook or node.',
 				displayOptions: {
 					show: {
 						resource: ['resource'],
@@ -150,7 +144,7 @@ export class Pangolin implements INodeType {
 					},
 				},
 				description:
-					'JSON body for resource create/update (e.g. name, protocol, proxyPort, domainId, etc.)',
+					'JSON body for resource create/update (e.g. name, protocol, proxyPort, domainId, etc.).',
 			},
 
 			// ------------------------------------------------------------------
@@ -409,9 +403,7 @@ export class Pangolin implements INodeType {
 
 	methods = {
 		loadOptions: {
-			loadOrganizations,
 			loadDomains,
-			loadResources,
 		},
 	};
 
