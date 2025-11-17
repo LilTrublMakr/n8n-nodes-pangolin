@@ -6,7 +6,7 @@ import type {
 	IExecuteFunctions,
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
-import { pangolinApiRequest, loadDomains } from './GenericFunctions';
+import { pangolinApiRequest } from './GenericFunctions';
 
 export class Pangolin implements INodeType {
 	description: INodeTypeDescription = {
@@ -98,7 +98,7 @@ export class Pangolin implements INodeType {
 			},
 
 			// ------------------------------------------------------------------
-			// Resource-specific fields (text ID)
+			// Resource-specific fields (text IDs + target)
 			// ------------------------------------------------------------------
 			{
 				displayName: 'Resource ID',
@@ -116,15 +116,12 @@ export class Pangolin implements INodeType {
 				},
 			},
 			{
-				displayName: 'Domain Name or ID',
-				name: 'domainId',
-				type: 'options',
-				typeOptions: {
-					loadOptionsMethod: 'loadDomains',
-				},
+				displayName: 'Target',
+				name: 'target',
+				type: 'string',
 				default: '',
 				description:
-					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+					'Target for the Pangolin resource (for example, <code>git.example.com:22</code>). You can set this from a previous node using an expression.',
 				displayOptions: {
 					show: {
 						resource: ['resource'],
@@ -144,7 +141,7 @@ export class Pangolin implements INodeType {
 					},
 				},
 				description:
-					'JSON body for resource create/update (e.g. name, protocol, proxyPort, domainId, etc.).',
+					'JSON body for resource create/update (for example, <code>{ "name": "GIT", "protocol": "tcp", "proxyPort": 22 }</code>).',
 			},
 
 			// ------------------------------------------------------------------
@@ -168,7 +165,10 @@ export class Pangolin implements INodeType {
 						displayName: 'Limit',
 						name: 'limit',
 						type: 'number',
-						typeOptions: { minValue: 1, maxValue: 100000 },
+						typeOptions: {
+							minValue: 1,
+							maxValue: 100000,
+						},
 						default: 50,
 						description: 'Max number of results to return',
 					},
@@ -223,7 +223,9 @@ export class Pangolin implements INodeType {
 				name: 'queryParametersUi',
 				placeholder: 'Add Parameter',
 				type: 'fixedCollection',
-				typeOptions: { multipleValues: true },
+				typeOptions: {
+					multipleValues: true,
+				},
 				default: {},
 				options: [
 					{
@@ -258,7 +260,9 @@ export class Pangolin implements INodeType {
 				name: 'headersUi',
 				placeholder: 'Add Header',
 				type: 'fixedCollection',
-				typeOptions: { multipleValues: true },
+				typeOptions: {
+					multipleValues: true,
+				},
 				default: {},
 				options: [
 					{
@@ -336,7 +340,9 @@ export class Pangolin implements INodeType {
 				name: 'bodyUi',
 				placeholder: 'Add Field',
 				type: 'fixedCollection',
-				typeOptions: { multipleValues: true },
+				typeOptions: {
+					multipleValues: true,
+				},
 				default: {},
 				options: [
 					{
@@ -386,7 +392,10 @@ export class Pangolin implements INodeType {
 						displayName: 'Limit',
 						name: 'limit',
 						type: 'number',
-						typeOptions: { minValue: 1, maxValue: 100000 },
+						typeOptions: {
+							minValue: 1,
+							maxValue: 100000,
+						},
 						default: 50,
 						description: 'Max number of results to return',
 					},
@@ -401,11 +410,7 @@ export class Pangolin implements INodeType {
 		],
 	};
 
-	methods = {
-		loadOptions: {
-			loadDomains,
-		},
-	};
+	// No loadOptions needed anymore (all IDs/targets are text fields)
 
 	async execute(this: IExecuteFunctions) {
 		const items = this.getInputData();
@@ -449,9 +454,10 @@ export class Pangolin implements INodeType {
 
 					if (operation === 'create') {
 						const body = (this.getNodeParameter('resourceBody', i) as IDataObject) || {};
-						const domainId = this.getNodeParameter('domainId', i, '') as string;
-						if (domainId && typeof body === 'object') {
-							(body as IDataObject).domainId = domainId;
+						const target = this.getNodeParameter('target', i, '') as string;
+
+						if (target && typeof body === 'object') {
+							(body as IDataObject).target = target;
 						}
 
 						const res = await pangolinApiRequest.call(
@@ -466,9 +472,10 @@ export class Pangolin implements INodeType {
 					if (operation === 'update') {
 						const resourceId = this.getNodeParameter('resourceId', i) as string;
 						const body = (this.getNodeParameter('resourceBody', i) as IDataObject) || {};
-						const maybeDomain = this.getNodeParameter('domainId', i, '') as string;
-						if (maybeDomain && typeof body === 'object') {
-							(body as IDataObject).domainId = maybeDomain;
+						const target = this.getNodeParameter('target', i, '') as string;
+
+						if (target && typeof body === 'object') {
+							(body as IDataObject).target = target;
 						}
 
 						const res = await pangolinApiRequest.call(
