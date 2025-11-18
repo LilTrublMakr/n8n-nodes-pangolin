@@ -1,54 +1,60 @@
 import type {
+	IAuthenticateGeneric,
+	ICredentialTestRequest,
 	ICredentialType,
 	INodeProperties,
-	Icon,
-	IAuthenticateGeneric,
 } from 'n8n-workflow';
 
 export class PangolinApi implements ICredentialType {
 	name = 'pangolinApi';
+
 	displayName = 'Pangolin API';
 
-	// Type is Icon (not string)
-	icon: Icon = 'file:../icons/pangolin.svg';
-
-	// Optional – keep or remove as you like
-	documentationUrl = 'https://docs.n8n.io/integrations/creating-nodes/overview/';
+	documentationUrl = 'https://api.pangolin.net/v1/docs/';
 
 	properties: INodeProperties[] = [
 		{
 			displayName: 'Base URL',
 			name: 'baseUrl',
 			type: 'string',
-			default: '',
-			placeholder: 'https://api.your-domain.com',
+			default: 'http://localhost:18080',
 			description:
-				"Root URL of your Pangolin API (self-hosted), without a trailing slash. Example: <code>https://api.example.com</code>. For more information and how to activate Pangolin's integration API, please see: https://docs.pangolin.net/manage/integration-api",
-			required: true,
+				'Base URL of your Pangolin instance, for example https://pangolin.example.com',
 		},
 		{
-			displayName: 'API Key (Bearer)',
-			name: 'apiKey',
+			displayName: 'API Token',
+			name: 'apiToken',
 			type: 'string',
-			typeOptions: { password: true },
+			typeOptions: {
+				password: true,
+			},
 			default: '',
-			description:
-				'Pangolin Integration API key created in Pangolin. As of Nov 2025, you must create a root key from the server admin panel.',
-			required: true,
+			description: 'Pangolin API token used for Authorization header',
 		},
 	];
 
-	// Make sure `type` is the literal "generic"
 	authenticate: IAuthenticateGeneric = {
 		type: 'generic',
 		properties: {
 			headers: {
-				Authorization: '={{"Bearer " + $credentials.apiKey}}',
+				// Sends: Authorization: Bearer <apiToken>
+				Authorization: '=Bearer {{$credentials.apiToken}}',
 			},
 		},
 	};
 
-	test: ICredentialType['test'] = {
+	/**
+	 * Credential test:
+	 *
+	 * Sends: GET {{baseUrl}}/v1/
+	 *
+	 * A healthy Pangolin instance is expected to respond with:
+	 *   { "message": "Healthy" }
+	 *
+	 * If Pangolin responds with a non-2xx status, n8n will surface the
+	 * error JSON (including any "message" field) in the test dialog.
+	 */
+	test: ICredentialTestRequest = {
 		request: {
 			baseURL: '={{$credentials.baseUrl}}',
 			url: '/v1/',
