@@ -29,15 +29,17 @@
 		"dist"
 	],
 	"n8n": {
-		"n8nNodesApiVersion": 1,
-		"strict": true,
-    	"nodes": [
-    	  "dist/nodes/Pangolin/Pangolin.node.js"
-    	],
-    	"credentials": [
-    	  "dist/credentials/PangolinApi.credentials.js"
-    	]
-	},
+	  "n8nNodesApiVersion": 1,
+	  "nodes": [
+	    "dist/nodes/Pangolin/Resource.node.js",
+	    "dist/nodes/Pangolin/Domain.node.js",
+	    "dist/nodes/Pangolin/Client.node.js",
+	    "dist/nodes/Pangolin/ApiCall.node.js"
+	  ],
+	  "credentials": [
+	    "dist/credentials/PangolinApi.credentials.js"
+	  ]
+	}
 	"devDependencies": {
 		"@n8n/node-cli": "*",
 		"eslint": "9.32.0",
