@@ -82,25 +82,29 @@ export class Pangolin implements INodeType {
 						description: 'Create a Pangolin resource',
 					},
 					{
-						name: 'Delete',
+						displayName: 'Delete',
+						name: 'delete',
 						value: 'delete',
 						action: 'Delete resource',
 						description: 'Delete a Pangolin resource',
 					},
 					{
-						name: 'Get',
+						displayName: 'Get',
+						name: 'get',
 						value: 'get',
 						action: 'Get resource',
 						description: 'Get a single Pangolin resource by ID',
 					},
 					{
-						name: 'List',
+						displayName: 'List',
+						name: 'list',
 						value: 'list',
 						action: 'List resources',
 						description: 'List Pangolin resources',
 					},
 					{
-						name: 'Update',
+						displayName: 'Update',
+						name: 'update',
 						value: 'update',
 						action: 'Update resource',
 						description: 'Update a Pangolin resource',
@@ -125,7 +129,8 @@ export class Pangolin implements INodeType {
 				},
 				options: [
 					{
-						name: 'List',
+						displayName: 'List',
+						name: 'list',
 						value: 'list',
 						action: 'List domains',
 						description: 'List Pangolin domains',
@@ -150,7 +155,8 @@ export class Pangolin implements INodeType {
 				},
 				options: [
 					{
-						name: 'List',
+						displayName: 'List',
+						name: 'list',
 						value: 'list',
 						action: 'List clients',
 						description: 'List Pangolin clients',
@@ -175,7 +181,8 @@ export class Pangolin implements INodeType {
 				},
 				options: [
 					{
-						name: 'API Request (Raw)',
+						displayName: 'API Request (Raw)',
+						name: 'request',
 						value: 'request',
 						action: 'Request an api',
 						description: 'Make a raw API request to any Pangolin endpoint',
@@ -185,6 +192,7 @@ export class Pangolin implements INodeType {
 
 			// ------------------------------------------------------------------
 			// Common: Organization scope (text field, no dropdown)
+			// NOTE: Now hidden for Resource → Get
 			// ------------------------------------------------------------------
 			{
 				displayName: 'Organization ID',
@@ -197,6 +205,7 @@ export class Pangolin implements INodeType {
 				displayOptions: {
 					show: {
 						resource: ['resource', 'domain', 'client'],
+						operation: ['list', 'create', 'update', 'delete'],
 					},
 				},
 			},
@@ -527,44 +536,100 @@ export class Pangolin implements INodeType {
 				// Resource actions (Resource header)
 				// --------------------------------------------------------------
 				if (resource === 'resource') {
-					const orgId = this.getNodeParameter('orgId', i) as string;
+					// List, Create, Update, Delete all need orgId
+					if (operation === 'list' || operation === 'create' || operation === 'update' || operation === 'delete') {
+						// orgId is visible and required for these operations
+						const orgId = this.getNodeParameter('orgId', i) as string;
 
-					// List resources -> /v1/org/{orgId}/resources
-					if (operation === 'list') {
-						const options = this.getNodeParameter('options', i, {}) as IDataObject;
-						const returnAll = options.returnAll !== false;
-						const limit = Number(options.limit ?? 50);
+						// List resources -> /v1/org/{orgId}/resources
+						if (operation === 'list') {
+							const options = this.getNodeParameter('options', i, {}) as IDataObject;
+							const returnAll = options.returnAll !== false;
+							const limit = Number(options.limit ?? 50);
 
-						const res = (await pangolinApiRequest.call(
-							this,
-							'GET',
-							`/v1/org/${orgId}/resources`,
-						)) as IDataObject | IDataObject[];
+							const res = (await pangolinApiRequest.call(
+								this,
+								'GET',
+								`/v1/org/${orgId}/resources`,
+							)) as IDataObject | IDataObject[];
 
-						let resources: IDataObject[] = [];
+							let resources: IDataObject[] = [];
 
-						if (Array.isArray(res)) {
-							resources = res;
-						} else if (res.data && (res.data as IDataObject).resources) {
-							const data = res.data as IDataObject;
-							if (Array.isArray(data.resources)) {
-								resources = data.resources as IDataObject[];
+							if (Array.isArray(res)) {
+								resources = res;
+							} else if (res.data && (res.data as IDataObject).resources) {
+								const data = res.data as IDataObject;
+								if (Array.isArray(data.resources)) {
+									resources = data.resources as IDataObject[];
+								}
+							} else {
+								resources = [res];
 							}
-						} else {
-							resources = [res];
+
+							const out = returnAll ? resources : resources.slice(0, limit);
+
+							for (const r of out) {
+								returnData.push({ json: (r ?? {}) as IDataObject });
+							}
+
+							continue;
 						}
 
-						const out = returnAll ? resources : resources.slice(0, limit);
+						// Create resource -> /v1/org/{orgId}/resources
+						if (operation === 'create') {
+							const body = (this.getNodeParameter('resourceBody', i) as IDataObject) || {};
+							const target = this.getNodeParameter('target', i, '') as string;
 
-						for (const r of out) {
-							returnData.push({ json: (r ?? {}) as IDataObject });
+							if (target && typeof body === 'object') {
+								(body as IDataObject).target = target;
+							}
+
+							const res = await pangolinApiRequest.call(
+								this,
+								'POST',
+								`/v1/org/${orgId}/resources`,
+								body,
+							);
+							returnData.push({ json: (res ?? {}) as IDataObject });
+							continue;
 						}
 
-						continue;
+						// Update resource -> /v1/org/{orgId}/resources/{resourceId}
+						if (operation === 'update') {
+							const resourceId = this.getNodeParameter('resourceId', i) as string;
+							const body = (this.getNodeParameter('resourceBody', i) as IDataObject) || {};
+							const target = this.getNodeParameter('target', i, '') as string;
+
+							if (target && typeof body === 'object') {
+								(body as IDataObject).target = target;
+							}
+
+							const res = await pangolinApiRequest.call(
+								this,
+								'PATCH',
+								`/v1/org/${orgId}/resources/${resourceId}`,
+								body,
+							);
+							returnData.push({ json: (res ?? {}) as IDataObject });
+							continue;
+						}
+
+						// Delete resource -> /v1/org/{orgId}/resources/{resourceId}
+						if (operation === 'delete') {
+							const resourceId = this.getNodeParameter('resourceId', i) as string;
+							const res = await pangolinApiRequest.call(
+								this,
+								'DELETE',
+								`/v1/org/${orgId}/resources/${resourceId}`,
+							);
+							returnData.push({ json: (res ?? {}) as IDataObject });
+							continue;
+						}
 					}
 
 					// Get resource -> /v1/resource/{resourceId}
 					if (operation === 'get') {
+						// orgId is NOT required / visible here
 						const resourceId = this.getNodeParameter('resourceId', i) as string;
 						const res = await pangolinApiRequest.call(
 							this,
@@ -574,65 +639,14 @@ export class Pangolin implements INodeType {
 						returnData.push({ json: (res ?? {}) as IDataObject });
 						continue;
 					}
-
-					// Create resource -> /v1/org/{orgId}/resources
-					if (operation === 'create') {
-						const body = (this.getNodeParameter('resourceBody', i) as IDataObject) || {};
-						const target = this.getNodeParameter('target', i, '') as string;
-
-						if (target && typeof body === 'object') {
-							(body as IDataObject).target = target;
-						}
-
-						const res = await pangolinApiRequest.call(
-							this,
-							'POST',
-							`/v1/org/${orgId}/resources`,
-							body,
-						);
-						returnData.push({ json: (res ?? {}) as IDataObject });
-						continue;
-					}
-
-					// Update resource -> /v1/org/{orgId}/resources/{resourceId}
-					if (operation === 'update') {
-						const resourceId = this.getNodeParameter('resourceId', i) as string;
-						const body = (this.getNodeParameter('resourceBody', i) as IDataObject) || {};
-						const target = this.getNodeParameter('target', i, '') as string;
-
-						if (target && typeof body === 'object') {
-							(body as IDataObject).target = target;
-						}
-
-						const res = await pangolinApiRequest.call(
-							this,
-							'PATCH',
-							`/v1/org/${orgId}/resources/${resourceId}`,
-							body,
-						);
-						returnData.push({ json: (res ?? {}) as IDataObject });
-						continue;
-					}
-
-					// Delete resource -> /v1/org/{orgId}/resources/{resourceId}
-					if (operation === 'delete') {
-						const resourceId = this.getNodeParameter('resourceId', i) as string;
-						const res = await pangolinApiRequest.call(
-							this,
-							'DELETE',
-							`/v1/org/${orgId}/resources/${resourceId}`,
-						);
-						returnData.push({ json: (res ?? {}) as IDataObject });
-						continue;
-					}
 				}
 
 				// --------------------------------------------------------------
-				// Domain actions (Domain header)
+				// Domain actions (Domain header) - require orgId
 				// --------------------------------------------------------------
 				if (resource === 'domain' && operation === 'list') {
 					const orgId = this.getNodeParameter('orgId', i) as string;
-				 const options = this.getNodeParameter('options', i, {}) as IDataObject;
+					const options = this.getNodeParameter('options', i, {}) as IDataObject;
 					const returnAll = options.returnAll !== false;
 					const limit = Number(options.limit ?? 50);
 
@@ -665,7 +679,7 @@ export class Pangolin implements INodeType {
 				}
 
 				// --------------------------------------------------------------
-				// Client actions (Client header)
+				// Client actions (Client header) - require orgId
 				// --------------------------------------------------------------
 				if (resource === 'client' && operation === 'list') {
 					const orgId = this.getNodeParameter('orgId', i) as string;
