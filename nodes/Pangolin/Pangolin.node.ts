@@ -15,7 +15,7 @@ export class Pangolin implements INodeType {
 		icon: 'file:../../icons/pangolin.svg',
 		group: ['transform'],
 		version: 1,
-		subtitle: '={{ $parameter["operation"] }}',
+		subtitle: '={{ $parameter["resource"] + ": " + $parameter["operation"] }}',
 		description: 'Work with a self-hosted Pangolin reverse proxy instance',
 		usableAsTool: true,
 		defaults: {
@@ -31,61 +31,138 @@ export class Pangolin implements INodeType {
 		],
 		properties: [
 			// ------------------------------------------------------------------
-			// Operation (actions)
+			// Resource "header"
+			// ------------------------------------------------------------------
+			{
+				displayName: 'Resource',
+				name: 'resource',
+				type: 'options',
+				noDataExpression: true,
+				default: 'resource',
+				options: [
+					{
+						name: 'API',
+						value: 'api',
+					},
+					{
+						name: 'Client',
+						value: 'client',
+					},
+					{
+						name: 'Domain',
+						value: 'domain',
+					},
+					{
+						name: 'Resource',
+						value: 'resource',
+					},
+				],
+			},
+
+			// ------------------------------------------------------------------
+			// Operation (actions), grouped by Resource via displayOptions
 			// ------------------------------------------------------------------
 			{
 				displayName: 'Operation',
 				name: 'operation',
 				type: 'options',
 				noDataExpression: true,
-				default: 'resourceList',
+				default: 'list',
 				options: [
 					// Alphabetical by name (lint requirement)
 					{
 						name: 'API Request (Raw)',
-						value: 'apiRequest',
+						value: 'request',
 						action: 'Request an api',
+						description: 'Make a raw API request to any Pangolin endpoint',
+						displayOptions: {
+							show: {
+								resource: ['api'],
+							},
+						},
 					},
 					{
-						name: 'Create Resource',
-						value: 'resourceCreate',
-						action: 'Create a resource',
+						name: 'Create',
+						value: 'create',
+						action: 'Create resource',
+						description: 'Create a Pangolin resource',
+						displayOptions: {
+							show: {
+								resource: ['resource'],
+							},
+						},
 					},
 					{
-						name: 'Delete Resource',
-						value: 'resourceDelete',
-						action: 'Delete a resource',
+						name: 'Delete',
+						value: 'delete',
+						action: 'Delete resource',
+						description: 'Delete a Pangolin resource',
+						displayOptions: {
+							show: {
+								resource: ['resource'],
+							},
+						},
 					},
 					{
-						name: 'Get Resource',
-						value: 'resourceGet',
-						action: 'Get a resource',
+						name: 'Get',
+						value: 'get',
+						action: 'Get resource',
+						description: 'Get a single Pangolin resource by ID',
+						displayOptions: {
+							show: {
+								resource: ['resource'],
+							},
+						},
 					},
 					{
-						name: 'List Clients',
-						value: 'clientList',
-						action: 'List clients',
-					},
-					{
-						name: 'List Domains',
-						value: 'domainList',
-						action: 'List domains',
-					},
-					{
-						name: 'List Resources',
-						value: 'resourceList',
+						name: 'List',
+						value: 'list',
 						action: 'List resources',
+						description: 'List Pangolin resources',
+						displayOptions: {
+							show: {
+								resource: ['resource'],
+							},
+						},
 					},
 					{
-						name: 'Update Resource',
-						value: 'resourceUpdate',
-						action: 'Update a resource',
+						name: 'List',
+						value: 'list',
+						action: 'List clients',
+						description: 'List Pangolin clients',
+						displayOptions: {
+							show: {
+								resource: ['client'],
+							},
+						},
+					},
+					{
+						name: 'List',
+						value: 'list',
+						action: 'List domains',
+						description: 'List Pangolin domains',
+						displayOptions: {
+							show: {
+								resource: ['domain'],
+							},
+						},
+					},
+					{
+						name: 'Update',
+						value: 'update',
+						action: 'Update resource',
+						description: 'Update a Pangolin resource',
+						displayOptions: {
+							show: {
+								resource: ['resource'],
+							},
+						},
 					},
 				],
 			},
 
 			// ------------------------------------------------------------------
-			// Common: Organization scope
+			// Common: Organization scope (text field, no dropdown)
 			// ------------------------------------------------------------------
 			{
 				displayName: 'Organization ID',
@@ -97,21 +174,13 @@ export class Pangolin implements INodeType {
 					'Organization ID from Pangolin (for example, <code>homelab</code>). You can set this from a previous node using an expression.',
 				displayOptions: {
 					show: {
-						operation: [
-							'resourceList',
-							'resourceGet',
-							'resourceCreate',
-							'resourceUpdate',
-							'resourceDelete',
-							'domainList',
-							'clientList',
-						],
+						resource: ['resource', 'domain', 'client'],
 					},
 				},
 			},
 
 			// ------------------------------------------------------------------
-			// Resource identifiers / payload
+			// Resource identifiers / payload (Resource header only)
 			// ------------------------------------------------------------------
 			{
 				displayName: 'Resource ID',
@@ -123,7 +192,8 @@ export class Pangolin implements INodeType {
 					'Numeric resourceId from Pangolin (for example, <code>1</code>). Typically provided by a previous webhook or node.',
 				displayOptions: {
 					show: {
-						operation: ['resourceGet', 'resourceUpdate', 'resourceDelete'],
+						resource: ['resource'],
+						operation: ['get', 'update', 'delete'],
 					},
 				},
 			},
@@ -136,7 +206,8 @@ export class Pangolin implements INodeType {
 					'Target for the Pangolin resource (for example, <code>git.example.com:22</code>). You can set this from a previous node using an expression.',
 				displayOptions: {
 					show: {
-						operation: ['resourceCreate', 'resourceUpdate'],
+						resource: ['resource'],
+						operation: ['create', 'update'],
 					},
 				},
 			},
@@ -147,7 +218,8 @@ export class Pangolin implements INodeType {
 				default: '{}',
 				displayOptions: {
 					show: {
-						operation: ['resourceCreate', 'resourceUpdate'],
+						resource: ['resource'],
+						operation: ['create', 'update'],
 					},
 				},
 				description:
@@ -155,7 +227,7 @@ export class Pangolin implements INodeType {
 			},
 
 			// ------------------------------------------------------------------
-			// List options (resources, domains, clients)
+			// List options for Resource / Domain / Client list actions
 			// ------------------------------------------------------------------
 			{
 				displayName: 'Options',
@@ -185,13 +257,14 @@ export class Pangolin implements INodeType {
 				],
 				displayOptions: {
 					show: {
-						operation: ['resourceList', 'domainList', 'clientList'],
+						operation: ['list'],
+						resource: ['resource', 'domain', 'client'],
 					},
 				},
 			},
 
 			// ------------------------------------------------------------------
-			// RAW API request action
+			// RAW API request action (API header)
 			// ------------------------------------------------------------------
 			{
 				displayName: 'Method',
@@ -208,7 +281,8 @@ export class Pangolin implements INodeType {
 				],
 				displayOptions: {
 					show: {
-						operation: ['apiRequest'],
+						resource: ['api'],
+						operation: ['request'],
 					},
 				},
 			},
@@ -221,7 +295,8 @@ export class Pangolin implements INodeType {
 				required: true,
 				displayOptions: {
 					show: {
-						operation: ['apiRequest'],
+						resource: ['api'],
+						operation: ['request'],
 					},
 				},
 			},
@@ -257,7 +332,8 @@ export class Pangolin implements INodeType {
 				],
 				displayOptions: {
 					show: {
-						operation: ['apiRequest'],
+						resource: ['api'],
+						operation: ['request'],
 					},
 				},
 			},
@@ -293,7 +369,8 @@ export class Pangolin implements INodeType {
 				],
 				displayOptions: {
 					show: {
-						operation: ['apiRequest'],
+						resource: ['api'],
+						operation: ['request'],
 					},
 				},
 			},
@@ -304,7 +381,8 @@ export class Pangolin implements INodeType {
 				default: false,
 				displayOptions: {
 					show: {
-						operation: ['apiRequest'],
+						resource: ['api'],
+						operation: ['request'],
 						method: ['POST', 'PUT', 'PATCH', 'DELETE'],
 					},
 				},
@@ -317,7 +395,8 @@ export class Pangolin implements INodeType {
 				default: true,
 				displayOptions: {
 					show: {
-						operation: ['apiRequest'],
+						resource: ['api'],
+						operation: ['request'],
 						sendBody: [true],
 					},
 				},
@@ -330,7 +409,8 @@ export class Pangolin implements INodeType {
 				default: '{}',
 				displayOptions: {
 					show: {
-						operation: ['apiRequest'],
+						resource: ['api'],
+						operation: ['request'],
 						sendBody: [true],
 						jsonParameters: [true],
 					},
@@ -369,7 +449,8 @@ export class Pangolin implements INodeType {
 				],
 				displayOptions: {
 					show: {
-						operation: ['apiRequest'],
+						resource: ['api'],
+						operation: ['request'],
 						sendBody: [true],
 						jsonParameters: [false],
 					},
@@ -403,7 +484,8 @@ export class Pangolin implements INodeType {
 				],
 				displayOptions: {
 					show: {
-						operation: ['apiRequest'],
+						resource: ['api'],
+						operation: ['request'],
 					},
 				},
 			},
@@ -416,23 +498,21 @@ export class Pangolin implements INodeType {
 
 		for (let i = 0; i < items.length; i++) {
 			try {
+				const resource = this.getNodeParameter('resource', i) as string;
 				const operation = this.getNodeParameter('operation', i) as string;
 
 				// --------------------------------------------------------------
-				// Resource actions
+				// Resource actions (Resource header)
 				// --------------------------------------------------------------
-				if (
-					operation === 'resourceList' ||
-					operation === 'resourceGet' ||
-					operation === 'resourceCreate' ||
-					operation === 'resourceUpdate' ||
-					operation === 'resourceDelete'
-				) {
+				if (resource === 'resource') {
 					const orgId = this.getNodeParameter('orgId', i) as string;
 
-					// ----- List Resources -----
-					if (operation === 'resourceList') {
+					// ----- List resources -----
+					if (operation === 'list') {
 						const options = this.getNodeParameter('options', i, {}) as IDataObject;
+						const returnAll = options.returnAll !== false;
+						const limit = Number(options.limit ?? 50);
+
 						const res = (await pangolinApiRequest.call(
 							this,
 							'GET',
@@ -452,10 +532,7 @@ export class Pangolin implements INodeType {
 							resources = [res];
 						}
 
-						const out =
-							options.returnAll === false
-								? resources.slice(0, Number(options.limit ?? 50))
-								: resources;
+						const out = returnAll ? resources : resources.slice(0, limit);
 
 						for (const r of out) {
 							returnData.push({ json: (r ?? {}) as IDataObject });
@@ -464,8 +541,8 @@ export class Pangolin implements INodeType {
 						continue;
 					}
 
-					// ----- Get Resource -----
-					if (operation === 'resourceGet') {
+					// ----- Get resource -----
+					if (operation === 'get') {
 						const resourceId = this.getNodeParameter('resourceId', i) as string;
 						const res = await pangolinApiRequest.call(
 							this,
@@ -476,8 +553,8 @@ export class Pangolin implements INodeType {
 						continue;
 					}
 
-					// ----- Create Resource -----
-					if (operation === 'resourceCreate') {
+					// ----- Create resource -----
+					if (operation === 'create') {
 						const body = (this.getNodeParameter('resourceBody', i) as IDataObject) || {};
 						const target = this.getNodeParameter('target', i, '') as string;
 
@@ -495,8 +572,8 @@ export class Pangolin implements INodeType {
 						continue;
 					}
 
-					// ----- Update Resource -----
-					if (operation === 'resourceUpdate') {
+					// ----- Update resource -----
+					if (operation === 'update') {
 						const resourceId = this.getNodeParameter('resourceId', i) as string;
 						const body = (this.getNodeParameter('resourceBody', i) as IDataObject) || {};
 						const target = this.getNodeParameter('target', i, '') as string;
@@ -515,8 +592,8 @@ export class Pangolin implements INodeType {
 						continue;
 					}
 
-					// ----- Delete Resource -----
-					if (operation === 'resourceDelete') {
+					// ----- Delete resource -----
+					if (operation === 'delete') {
 						const resourceId = this.getNodeParameter('resourceId', i) as string;
 						const res = await pangolinApiRequest.call(
 							this,
@@ -529,11 +606,13 @@ export class Pangolin implements INodeType {
 				}
 
 				// --------------------------------------------------------------
-				// Domain actions
+				// Domain actions (Domain header)
 				// --------------------------------------------------------------
-				if (operation === 'domainList') {
+				if (resource === 'domain' && operation === 'list') {
 					const orgId = this.getNodeParameter('orgId', i) as string;
 					const options = this.getNodeParameter('options', i, {}) as IDataObject;
+					const returnAll = options.returnAll !== false;
+					const limit = Number(options.limit ?? 50);
 
 					const res = (await pangolinApiRequest.call(
 						this,
@@ -554,10 +633,7 @@ export class Pangolin implements INodeType {
 						domains = [res];
 					}
 
-					const out =
-						options.returnAll === false
-							? domains.slice(0, Number(options.limit ?? 50))
-							: domains;
+					const out = returnAll ? domains : domains.slice(0, limit);
 
 					for (const d of out) {
 						returnData.push({ json: (d ?? {}) as IDataObject });
@@ -567,11 +643,13 @@ export class Pangolin implements INodeType {
 				}
 
 				// --------------------------------------------------------------
-				// Client actions
+				// Client actions (Client header)
 				// --------------------------------------------------------------
-				if (operation === 'clientList') {
+				if (resource === 'client' && operation === 'list') {
 					const orgId = this.getNodeParameter('orgId', i) as string;
 					const options = this.getNodeParameter('options', i, {}) as IDataObject;
+					const returnAll = options.returnAll !== false;
+					const limit = Number(options.limit ?? 50);
 
 					const res = (await pangolinApiRequest.call(
 						this,
@@ -592,10 +670,7 @@ export class Pangolin implements INodeType {
 						clients = [res];
 					}
 
-					const out =
-						options.returnAll === false
-							? clients.slice(0, Number(options.limit ?? 50))
-							: clients;
+					const out = returnAll ? clients : clients.slice(0, limit);
 
 					for (const c of out) {
 						returnData.push({ json: (c ?? {}) as IDataObject });
@@ -605,9 +680,9 @@ export class Pangolin implements INodeType {
 				}
 
 				// --------------------------------------------------------------
-				// Raw API action
+				// Raw API action (API header)
 				// --------------------------------------------------------------
-				if (operation === 'apiRequest') {
+				if (resource === 'api' && operation === 'request') {
 					const method = this.getNodeParameter('method', i) as
 						| 'GET'
 						| 'POST'
@@ -616,8 +691,11 @@ export class Pangolin implements INodeType {
 						| 'DELETE';
 					const endpoint = this.getNodeParameter('endpoint', i) as string;
 
-					// Query params
-					const queryParametersUi = this.getNodeParameter('queryParametersUi', i, {}) as {
+					const queryParametersUi = this.getNodeParameter(
+						'queryParametersUi',
+						i,
+						{},
+					) as {
 						parameter?: Array<{ name?: string; value?: string }>;
 					};
 					const qs: IDataObject = {};
@@ -627,7 +705,6 @@ export class Pangolin implements INodeType {
 						}
 					}
 
-					// Headers
 					const headersUi = this.getNodeParameter('headersUi', i, {}) as {
 						header?: Array<{ name?: string; value?: string }>;
 					};
@@ -638,11 +715,14 @@ export class Pangolin implements INodeType {
 						}
 					}
 
-					// Body
 					let body: IDataObject | undefined;
 					const sendBody = this.getNodeParameter('sendBody', i, false) as boolean;
 					if (sendBody) {
-						const jsonParameters = this.getNodeParameter('jsonParameters', i, true) as boolean;
+						const jsonParameters = this.getNodeParameter(
+							'jsonParameters',
+							i,
+							true,
+						) as boolean;
 						if (jsonParameters) {
 							body = (this.getNodeParameter('bodyJson', i) as IDataObject) ?? {};
 						} else {
@@ -669,11 +749,10 @@ export class Pangolin implements INodeType {
 
 					const rawOptions = this.getNodeParameter('rawOptions', i, {}) as IDataObject;
 					const returnAll = rawOptions.returnAll !== false;
+					const limit = Number(rawOptions.limit ?? 50);
 
 					if (Array.isArray(response)) {
-						const arr = returnAll
-							? response
-							: response.slice(0, Number(rawOptions.limit ?? 50));
+						const arr = returnAll ? response : response.slice(0, limit);
 						for (const entry of arr) {
 							returnData.push({ json: (entry ?? {}) as IDataObject });
 						}
@@ -687,9 +766,11 @@ export class Pangolin implements INodeType {
 				// --------------------------------------------------------------
 				// Fallback
 				// --------------------------------------------------------------
-				throw new NodeOperationError(this.getNode(), 'Unsupported operation', {
-					itemIndex: i,
-				});
+				throw new NodeOperationError(
+					this.getNode(),
+					`Unsupported combination of resource "${resource}" and operation "${operation}"`,
+					{ itemIndex: i },
+				);
 			} catch (error) {
 				if (this.continueOnFail()) {
 					returnData.push({ json: { error: (error as Error).message } });
