@@ -529,7 +529,7 @@ export class Pangolin implements INodeType {
 				if (resource === 'resource') {
 					const orgId = this.getNodeParameter('orgId', i) as string;
 
-					// List resources
+					// List resources -> /v1/org/{orgId}/resources
 					if (operation === 'list') {
 						const options = this.getNodeParameter('options', i, {}) as IDataObject;
 						const returnAll = options.returnAll !== false;
@@ -563,19 +563,19 @@ export class Pangolin implements INodeType {
 						continue;
 					}
 
-					// Get resource
+					// Get resource -> /v1/resource/{resourceId}
 					if (operation === 'get') {
 						const resourceId = this.getNodeParameter('resourceId', i) as string;
 						const res = await pangolinApiRequest.call(
 							this,
 							'GET',
-							`/v1/org/${orgId}/resources/${resourceId}`,
+							`/v1/resource/${resourceId}`,
 						);
 						returnData.push({ json: (res ?? {}) as IDataObject });
 						continue;
 					}
 
-					// Create resource
+					// Create resource -> /v1/org/{orgId}/resources
 					if (operation === 'create') {
 						const body = (this.getNodeParameter('resourceBody', i) as IDataObject) || {};
 						const target = this.getNodeParameter('target', i, '') as string;
@@ -594,7 +594,7 @@ export class Pangolin implements INodeType {
 						continue;
 					}
 
-					// Update resource
+					// Update resource -> /v1/org/{orgId}/resources/{resourceId}
 					if (operation === 'update') {
 						const resourceId = this.getNodeParameter('resourceId', i) as string;
 						const body = (this.getNodeParameter('resourceBody', i) as IDataObject) || {};
@@ -614,7 +614,7 @@ export class Pangolin implements INodeType {
 						continue;
 					}
 
-					// Delete resource
+					// Delete resource -> /v1/org/{orgId}/resources/{resourceId}
 					if (operation === 'delete') {
 						const resourceId = this.getNodeParameter('resourceId', i) as string;
 						const res = await pangolinApiRequest.call(
@@ -632,7 +632,7 @@ export class Pangolin implements INodeType {
 				// --------------------------------------------------------------
 				if (resource === 'domain' && operation === 'list') {
 					const orgId = this.getNodeParameter('orgId', i) as string;
-					const options = this.getNodeParameter('options', i, {}) as IDataObject;
+				 const options = this.getNodeParameter('options', i, {}) as IDataObject;
 					const returnAll = options.returnAll !== false;
 					const limit = Number(options.limit ?? 50);
 
