@@ -129,10 +129,28 @@ export class Pangolin implements INodeType {
 				},
 				options: [
 					{
+						name: 'Get',
+						value: 'get',
+						action: 'Get domain',
+						description: 'Get a domain by ID [/org/{orgId}/domain/{domainId}]',
+					},
+					{
+						name: 'Get DNS Records',
+						value: 'listDnsRecords',
+						action: 'List DNS records',
+						description: 'List DNS records for a domain [/org/{orgId}/domain/{domainId}]',
+					},
+					{
 						name: 'List',
 						value: 'list',
 						action: 'List domains',
-						description: 'List Pangolin domains',
+						description: 'List Pangolin domains [/org/{orgId}/domains]',
+					},
+					{
+						name: 'Update',
+						value: 'update',
+						action: 'Update domain',
+						description: 'Update a Pangolin domain by ID [/org/{orgId}/domain/{domainId}]',
 					},
 				],
 			},
@@ -182,31 +200,31 @@ export class Pangolin implements INodeType {
 						name: 'Create',
 						value: 'create',
 						action: 'Create target',
-						description: 'Create a target at a given ID [/target/{targetId}]',
+						description: 'Create a target at a given ID',
 					},
 					{
 						name: 'Delete',
 						value: 'delete',
 						action: 'Delete target',
-						description: 'Delete a target by ID [/target/{targetId}]',
+						description: 'Delete a target by ID',
 					},
 					{
 						name: 'Get',
 						value: 'get',
 						action: 'Get target',
-						description: 'Get a single target by ID [/target/{targetId}]',
+						description: 'Get a single target by ID',
 					},
 					{
 						name: 'Get From Resource',
 						value: 'getByResource',
 						action: 'Get target from resource',
-						description: 'Get targets associated with a resource [/resource/{resourceId}/targets]',
+						description: 'Get the target associated with a resource',
 					},
 					{
 						name: 'Set For Resource',
 						value: 'setForResource',
 						action: 'Set target for resource',
-						description: 'Create or update the target for a resource [/resource/{resourceId}/target]',
+						description: 'Create or update the target for a resource',
 					},
 				],
 			},
@@ -238,7 +256,7 @@ export class Pangolin implements INodeType {
 
 			// ------------------------------------------------------------------
 			// Common: Organization scope (text field, no dropdown)
-			// NOTE: Hidden for Resource → Get and all Target actions
+			// NOTE: Hidden for Resource "Get" and all Target actions
 			// ------------------------------------------------------------------
 			{
 				displayName: 'Organization ID',
@@ -251,7 +269,10 @@ export class Pangolin implements INodeType {
 				displayOptions: {
 					show: {
 						resource: ['resource', 'domain', 'client'],
-						operation: ['list', 'create', 'update', 'delete'],
+					},
+					hide: {
+						resource: ['resource'],
+						operation: ['get'],
 					},
 				},
 			},
@@ -304,6 +325,38 @@ export class Pangolin implements INodeType {
 			},
 
 			// ------------------------------------------------------------------
+			// Domain identifiers / payload (Domain header only)
+			// ------------------------------------------------------------------
+			{
+				displayName: 'Domain ID',
+				name: 'domainId',
+				type: 'string',
+				default: '',
+				required: true,
+				description: 'Domain ID from Pangolin. Typically provided by a previous webhook or node.',
+				displayOptions: {
+					show: {
+						resource: ['domain'],
+						operation: ['get', 'update', 'listDnsRecords'],
+					},
+				},
+			},
+			{
+				displayName: 'Body (JSON)',
+				name: 'domainBody',
+				type: 'json',
+				default: '{}',
+				description:
+					'JSON body for updating a domain (for example, <code>{ "name": "example.com" }</code>).',
+				displayOptions: {
+					show: {
+						resource: ['domain'],
+						operation: ['update'],
+					},
+				},
+			},
+
+			// ------------------------------------------------------------------
 			// Target identifiers / payload (Target header only)
 			// ------------------------------------------------------------------
 			{
@@ -327,8 +380,7 @@ export class Pangolin implements INodeType {
 				type: 'string',
 				default: '',
 				required: true,
-				description:
-					'Resource ID whose target should be retrieved or updated.',
+				description: 'Resource ID whose target should be retrieved or updated.',
 				displayOptions: {
 					show: {
 						resource: ['target'],
@@ -383,7 +435,7 @@ export class Pangolin implements INodeType {
 				displayOptions: {
 					show: {
 						resource: ['resource', 'domain', 'client'],
-						operation: ['list'],
+						operation: ['list', 'listDnsRecords'],
 					},
 				},
 			},
@@ -736,38 +788,99 @@ export class Pangolin implements INodeType {
 				// --------------------------------------------------------------
 				// Domain actions (Domain header) - require orgId
 				// --------------------------------------------------------------
-				if (resource === 'domain' && operation === 'list') {
+				if (resource === 'domain') {
 					const orgId = this.getNodeParameter('orgId', i) as string;
-					const options = this.getNodeParameter('options', i, {}) as IDataObject;
-					const returnAll = options.returnAll !== false;
-					const limit = Number(options.limit ?? 50);
 
-					const res = (await pangolinApiRequest.call(
-						this,
-						'GET',
-						`/v1/org/${orgId}/domains`,
-					)) as IDataObject | IDataObject[];
+					if (operation === 'list') {
+						const options = this.getNodeParameter('options', i, {}) as IDataObject;
+						const returnAll = options.returnAll !== false;
+						const limit = Number(options.limit ?? 50);
 
-					let domains: IDataObject[] = [];
+						const res = (await pangolinApiRequest.call(
+							this,
+							'GET',
+							`/v1/org/${orgId}/domains`,
+						)) as IDataObject | IDataObject[];
 
-					if (Array.isArray(res)) {
-						domains = res;
-					} else if (res.data && (res.data as IDataObject).domains) {
-						const data = res.data as IDataObject;
-						if (Array.isArray(data.domains)) {
-							domains = data.domains as IDataObject[];
+						let domains: IDataObject[] = [];
+
+						if (Array.isArray(res)) {
+							domains = res;
+						} else if (res.data && (res.data as IDataObject).domains) {
+							const data = res.data as IDataObject;
+							if (Array.isArray(data.domains)) {
+								domains = data.domains as IDataObject[];
+							}
+						} else {
+							domains = [res];
 						}
-					} else {
-						domains = [res];
+
+						const out = returnAll ? domains : domains.slice(0, limit);
+
+						for (const d of out) {
+							returnData.push({ json: (d ?? {}) as IDataObject });
+						}
+
+						continue;
 					}
 
-					const out = returnAll ? domains : domains.slice(0, limit);
-
-					for (const d of out) {
-						returnData.push({ json: (d ?? {}) as IDataObject });
+					if (operation === 'get') {
+						const domainId = this.getNodeParameter('domainId', i) as string;
+						const res = await pangolinApiRequest.call(
+							this,
+							'GET',
+							`/v1/org/${orgId}/domain/${domainId}`,
+						);
+						returnData.push({ json: (res ?? {}) as IDataObject });
+						continue;
 					}
 
-					continue;
+					if (operation === 'update') {
+						const domainId = this.getNodeParameter('domainId', i) as string;
+						const body = (this.getNodeParameter('domainBody', i) as IDataObject) || {};
+						const res = await pangolinApiRequest.call(
+							this,
+							'PATCH',
+							`/v1/org/${orgId}/domain/${domainId}`,
+							body,
+						);
+						returnData.push({ json: (res ?? {}) as IDataObject });
+						continue;
+					}
+
+					if (operation === 'listDnsRecords') {
+						const domainId = this.getNodeParameter('domainId', i) as string;
+						const options = this.getNodeParameter('options', i, {}) as IDataObject;
+						const returnAll = options.returnAll !== false;
+						const limit = Number(options.limit ?? 50);
+
+						const res = (await pangolinApiRequest.call(
+							this,
+							'GET',
+							`/v1/org/${orgId}/domain/${domainId}/dns-records`,
+						)) as IDataObject | IDataObject[];
+
+						let dnsRecords: IDataObject[] = [];
+
+						if (Array.isArray(res)) {
+							dnsRecords = res;
+						} else if (res.data && (res.data as IDataObject).dnsRecords) {
+							const data = res.data as IDataObject;
+							if (Array.isArray(data.dnsRecords)) {
+								dnsRecords = data.dnsRecords as IDataObject[];
+							}
+						} else {
+							dnsRecords = [res];
+						}
+
+						const out = returnAll ? dnsRecords : dnsRecords.slice(0, limit);
+
+						for (const record of out) {
+							returnData.push({ json: (record ?? {}) as IDataObject });
+						}
+
+						continue;
+					}
 				}
 
 				// --------------------------------------------------------------
@@ -858,7 +971,7 @@ export class Pangolin implements INodeType {
 						const res = await pangolinApiRequest.call(
 							this,
 							'GET',
-							`/v1/resource/${resourceIdForTarget}/targets`,
+							`/v1/resource/${resourceIdForTarget}/target`,
 						);
 						returnData.push({ json: (res ?? {}) as IDataObject });
 						continue;
