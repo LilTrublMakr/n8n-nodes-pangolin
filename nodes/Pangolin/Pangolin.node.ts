@@ -1,12 +1,1003 @@
-import type {
+import {
 	IDataObject,
+	IExecuteFunctions,
+	IHttpRequestOptions,
 	INodeExecutionData,
+	INodeProperties,
 	INodeType,
 	INodeTypeDescription,
-	IExecuteFunctions,
+	NodeOperationError,
 } from 'n8n-workflow';
-import { NodeOperationError } from 'n8n-workflow';
-import { pangolinApiRequest } from './GenericFunctions';
+
+/**
+ * Typed catalog entry for a Pangolin API action.
+ */
+type PangolinAction = {
+	name: string;
+	method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+	path: string;
+	description: string;
+	example?: IDataObject;
+};
+
+/**
+ * Catalog of Pangolin API actions grouped by category (tag).
+ * Each action includes the HTTP method, path, description, and
+ * an example JSON body when the endpoint defines a requestBody.
+ *
+ * Paths are relative to /v1.
+ */
+const PANGOLIN_ACTIONS_BY_CATEGORY: Record<string, PangolinAction[]> = {
+	Organization: [
+		{
+			name: 'List Organizations',
+			method: 'GET',
+			path: '/orgs',
+			description: 'List all organizations in the system.',
+		},
+		{
+			name: 'Create Organization',
+			method: 'PUT',
+			path: '/org',
+			description: 'Create a new organization',
+			example: {
+				orgId: 'homelab',
+				name: 'My Organization',
+				subnet: '100.90.128.0/24',
+			},
+		},
+		{
+			name: 'Get Organization',
+			method: 'GET',
+			path: '/org/{orgId}',
+			description: 'Get an organization',
+		},
+		{
+			name: 'Delete Organization',
+			method: 'DELETE',
+			path: '/org/{orgId}',
+			description: 'Delete an organization',
+		},
+		{
+			name: 'Update Organization',
+			method: 'POST',
+			path: '/org/{orgId}',
+			description: 'Update an organization',
+			example: {
+				name: 'My Organization',
+				requireTwoFactor: true,
+				maxSessionLengthHours: 8,
+				passwordExpiryDays: 90,
+				settingsLogRetentionDaysRequest: 7,
+				settingsLogRetentionDaysAccess: 0,
+				settingsLogRetentionDaysAction: 0,
+			},
+		},
+		{
+			name: 'List Organization Resources',
+			method: 'GET',
+			path: '/org/{orgId}/resources',
+			description: 'List resources for an organization.',
+		},
+		{
+			name: 'Get Resource by Nice ID',
+			method: 'GET',
+			path: '/org/{orgId}/resource/{niceId}',
+			description:
+				'Get a resource by orgId and niceId. NiceId is a readable ID for the resource and unique on a per org basis.',
+		},
+		{
+			name: 'Create Resource',
+			method: 'PUT',
+			path: '/org/{orgId}/resource',
+			description: 'Create a resource.',
+			example: {
+				name: 'string',
+				subdomain: 'string',
+				http: true,
+				protocol: 'tcp',
+				domainId: 'string',
+				stickySession: true,
+			},
+		},
+		{
+			name: 'List Organization Domains',
+			method: 'GET',
+			path: '/org/{orgId}/domains',
+			description: 'List all domains for a organization.',
+		},
+		{
+			name: 'List Roles',
+			method: 'GET',
+			path: '/org/{orgId}/roles',
+			description: 'List roles.',
+		},
+		{
+			name: 'Create Role',
+			method: 'PUT',
+			path: '/org/{orgId}/role',
+			description: 'Create a role.',
+			example: {
+				name: 'string',
+				description: 'string',
+			},
+		},
+		{
+			name: 'List Organization Users',
+			method: 'GET',
+			path: '/org/{orgId}/users',
+			description: 'List users in an organization.',
+		},
+		{
+			name: 'Get Organization User',
+			method: 'GET',
+			path: '/org/{orgId}/user/{userId}',
+			description: 'Get a user in an organization.',
+		},
+		{
+			name: 'Update Organization User',
+			method: 'POST',
+			path: '/org/{orgId}/user/{userId}',
+			description: 'Update a user in an org.',
+			example: {
+				autoProvisioned: true,
+			},
+		},
+		{
+			name: 'Remove Organization User',
+			method: 'DELETE',
+			path: '/org/{orgId}/user/{userId}',
+			description: 'Remove a user from an organization.',
+		},
+		{
+			name: 'Check User Access',
+			method: 'GET',
+			path: '/org/{orgId}/user/{userId}/check',
+			description: "Check a user's access in an organization.",
+		},
+		{
+			name: 'Create Organization User',
+			method: 'PUT',
+			path: '/org/{orgId}/user',
+			description: 'Create an organization user.',
+			example: {
+				email: 'user@example.com',
+				username: 'jdoe',
+				name: 'John Doe',
+				type: 'internal',
+				idpId: 1,
+				roleId: 1,
+			},
+		},
+		{
+			name: 'Create Invite',
+			method: 'POST',
+			path: '/org/{orgId}/create-invite',
+			description: 'Invite a user to join an organization.',
+			example: {
+				email: 'user@example.com',
+				roleId: 1,
+				validHours: 24,
+				sendEmail: true,
+				regenerate: false,
+			},
+		},
+		{
+			name: 'List Invitations',
+			method: 'GET',
+			path: '/org/{orgId}/invitations',
+			description: 'List invitations in an organization.',
+		},
+		{
+			name: 'List Clients',
+			method: 'GET',
+			path: '/org/{orgId}/clients',
+			description: 'List all clients for an organization.',
+		},
+		{
+			name: 'Create Client',
+			method: 'PUT',
+			path: '/org/{orgId}/client',
+			description: 'Create a new client.',
+			example: {
+				name: 'string',
+				siteIds: [1],
+				olmId: 'string',
+				secret: 'string',
+				subnet: '100.90.128.0/24',
+				type: 'olm',
+			},
+		},
+		{
+			name: 'List Sites',
+			method: 'GET',
+			path: '/org/{orgId}/sites',
+			description: 'List all sites in an organization',
+		},
+		{
+			name: 'Create Site',
+			method: 'PUT',
+			path: '/org/{orgId}/site',
+			description: 'Create a new site.',
+			example: {
+				name: 'My Site',
+				exitNodeId: 1,
+				pubKey: 'string',
+				subnet: '100.90.129.0/24',
+				newtId: 'string',
+				secret: 'string',
+				address: 'string',
+				type: 'newt',
+			},
+		},
+		{
+			name: 'Pick Site Defaults',
+			method: 'GET',
+			path: '/org/{orgId}/pick-site-defaults',
+			description:
+				'Return pre-requisite data for creating a site, such as the exit node, subnet, Newt credentials, etc.',
+		},
+		{
+			name: 'Pick Client Defaults',
+			method: 'GET',
+			path: '/org/{orgId}/pick-client-defaults',
+			description: 'Return pre-requisite data for creating a client.',
+		},
+		{
+			name: 'Create Site Resource',
+			method: 'PUT',
+			path: '/org/{orgId}/site/{siteId}/resource',
+			description: 'Create a new site resource.',
+			example: {
+				name: 'string',
+				protocol: 'tcp',
+				proxyPort: 443,
+				destinationPort: 443,
+				destinationIp: '10.0.0.10',
+				enabled: true,
+			},
+		},
+		{
+			name: 'Get Site Resource',
+			method: 'GET',
+			path: '/org/{orgId}/site/{siteId}/resource/{siteResourceId}',
+			description: 'Get a specific site resource by siteResourceId.',
+		},
+		{
+			name: 'Update Site Resource',
+			method: 'POST',
+			path: '/org/{orgId}/site/{siteId}/resource/{siteResourceId}',
+			description: 'Update a site resource.',
+			example: {
+				name: 'string',
+				protocol: 'tcp',
+				proxyPort: 443,
+				destinationPort: 443,
+				destinationIp: '10.0.0.10',
+				enabled: true,
+			},
+		},
+		{
+			name: 'Delete Site Resource',
+			method: 'DELETE',
+			path: '/org/{orgId}/site/{siteId}/resource/{siteResourceId}',
+			description: 'Delete a site resource.',
+		},
+		{
+			name: 'Get Site Resource by Nice ID',
+			method: 'GET',
+			path: '/org/{orgId}/site/{siteId}/resource/nice/{niceId}',
+			description: 'Get a specific site resource by niceId.',
+		},
+		{
+			name: 'List Site Resources for Site',
+			method: 'GET',
+			path: '/org/{orgId}/site/{siteId}/resources',
+			description: 'List site resources for a site.',
+		},
+		{
+			name: 'List Site Resources for Org',
+			method: 'GET',
+			path: '/org/{orgId}/site-resources',
+			description: 'List all site resources for an organization.',
+		},
+		{
+			name: 'List Blueprints',
+			method: 'GET',
+			path: '/org/{orgId}/blueprints',
+			description: 'List all blueprints for a organization.',
+		},
+		{
+			name: 'Apply Blueprint',
+			method: 'PUT',
+			path: '/org/{orgId}/blueprint',
+			description: 'Apply a base64 encoded JSON blueprint to an organization',
+			example: {
+				blueprint: 'base64-encoded-json',
+			},
+		},
+		{
+			name: 'Get Blueprint',
+			method: 'GET',
+			path: '/org/{orgId}/blueprint/{blueprintId}',
+			description: 'Get a blueprint by its blueprint ID.',
+		},
+		{
+			name: 'List API Keys',
+			method: 'GET',
+			path: '/org/{orgId}/api-keys',
+			description: 'List all API keys for an organization',
+		},
+		{
+			name: 'Create API Key',
+			method: 'PUT',
+			path: '/org/{orgId}/api-key',
+			description: 'Create a new API key scoped to the organization.',
+			example: {
+				name: 'My API Key',
+			},
+		},
+		{
+			name: 'Delete API Key',
+			method: 'DELETE',
+			path: '/org/{orgId}/api-key/{apiKeyId}',
+			description: 'Delete an API key.',
+		},
+		{
+			name: 'List API Key Actions',
+			method: 'GET',
+			path: '/org/{orgId}/api-key/{apiKeyId}/actions',
+			description: 'List all actions set for an API key.',
+		},
+		{
+			name: 'Set API Key Actions',
+			method: 'POST',
+			path: '/org/{orgId}/api-key/{apiKeyId}/actions',
+			description:
+				'Set actions for an API key. This will replace any existing actions.',
+			example: {
+				actionIds: ['string'],
+			},
+		},
+		{
+			name: 'List Org Access Tokens',
+			method: 'GET',
+			path: '/org/{orgId}/access-tokens',
+			description: 'List all access tokens in an organization.',
+		},
+		{
+			name: 'Query Request Logs',
+			method: 'GET',
+			path: '/org/{orgId}/logs/request',
+			description: 'Query the request audit log for an organization',
+		},
+	],
+
+	Site: [
+		{
+			name: 'Get Site by Nice ID',
+			method: 'GET',
+			path: '/org/{orgId}/site/{niceId}',
+			description:
+				'Get a site by orgId and niceId. NiceId is a readable ID for the site and unique on a per org basis.',
+		},
+		{
+			name: 'Get Site',
+			method: 'GET',
+			path: '/site/{siteId}',
+			description: 'Get a site by siteId.',
+		},
+		{
+			name: 'Delete Site',
+			method: 'DELETE',
+			path: '/site/{siteId}',
+			description: 'Delete a site and all its associated data.',
+		},
+		{
+			name: 'Update Site',
+			method: 'POST',
+			path: '/site/{siteId}',
+			description: 'Update a site.',
+			example: {
+				name: 'My Site',
+				dockerSocketEnabled: false,
+				remoteSubnets: '100.90.130.0/24',
+			},
+		},
+	],
+
+	Resource: [
+		{
+			name: 'Get Resource',
+			method: 'GET',
+			path: '/resource/{resourceId}',
+			description: 'Get a resource by resourceId.',
+		},
+		{
+			name: 'Delete Resource',
+			method: 'DELETE',
+			path: '/resource/{resourceId}',
+			description: 'Delete a resource.',
+		},
+		{
+			name: 'Update Resource',
+			method: 'POST',
+			path: '/resource/{resourceId}',
+			description: 'Update a resource.',
+			example: {
+				name: 'string',
+				subdomain: 'string',
+				ssl: true,
+				sso: true,
+				blockAccess: false,
+				emailWhitelistEnabled: false,
+				applyRules: true,
+				domainId: 'string',
+				enabled: true,
+				stickySession: true,
+				tlsServerName: 'string',
+				setHostHeader: 'string',
+				skipToIdpId: 1,
+				headers: [{ name: 'string', value: 'string' }],
+				proxyPort: 443,
+				proxyProtocol: false,
+				proxyProtocolVersion: 1,
+			},
+		},
+		{
+			name: 'List Resource Targets',
+			method: 'GET',
+			path: '/resource/{resourceId}/targets',
+			description: 'List targets for a resource.',
+		},
+		{
+			name: 'Create Target for Resource',
+			method: 'PUT',
+			path: '/resource/{resourceId}/target',
+			description: 'Create a target for a resource.',
+			example: {
+				siteId: 1,
+				ip: '10.0.0.10',
+				method: 'GET',
+				port: 443,
+				enabled: true,
+			},
+		},
+		{
+			name: 'Set Resource Password',
+			method: 'POST',
+			path: '/resource/{resourceId}/password',
+			description:
+				'Set the password for a resource. Setting the password to null will remove it.',
+			example: {
+				password: 'secret123',
+			},
+		},
+		{
+			name: 'Set Resource PIN Code',
+			method: 'POST',
+			path: '/resource/{resourceId}/pincode',
+			description:
+				'Set the PIN code for a resource. Setting the PIN code to null will remove it.',
+			example: {
+				pincode: '123456',
+			},
+		},
+		{
+			name: 'Set Email Whitelist',
+			method: 'POST',
+			path: '/resource/{resourceId}/whitelist',
+			description:
+				'Set email whitelist for a resource. This will replace all existing emails.',
+			example: {
+				emails: ['user@example.com', '*@example.com'],
+			},
+		},
+		{
+			name: 'Get Email Whitelist',
+			method: 'GET',
+			path: '/resource/{resourceId}/whitelist',
+			description: 'Get the whitelist of emails for a specific resource.',
+		},
+		{
+			name: 'Add Whitelist Email',
+			method: 'POST',
+			path: '/resource/{resourceId}/whitelist/add',
+			description: 'Add a single email to the resource whitelist.',
+			example: {
+				email: 'user@example.com',
+			},
+		},
+		{
+			name: 'Remove Whitelist Email',
+			method: 'POST',
+			path: '/resource/{resourceId}/whitelist/remove',
+			description: 'Remove a single email from the resource whitelist.',
+			example: {
+				email: 'user@example.com',
+			},
+		},
+		{
+			name: 'Create Rule',
+			method: 'PUT',
+			path: '/resource/{resourceId}/rule',
+			description: 'Create a resource rule.',
+			example: {
+				action: 'ACCEPT',
+				match: 'CIDR',
+				value: '10.0.0.0/24',
+				priority: 100,
+				enabled: true,
+			},
+		},
+		{
+			name: 'Update Rule',
+			method: 'POST',
+			path: '/resource/{resourceId}/rule/{ruleId}',
+			description: 'Update a resource rule.',
+			example: {
+				action: 'ACCEPT',
+				match: 'CIDR',
+				value: '10.0.0.0/24',
+				priority: 100,
+				enabled: true,
+			},
+		},
+		{
+			name: 'Delete Rule',
+			method: 'DELETE',
+			path: '/resource/{resourceId}/rule/{ruleId}',
+			description: 'Delete a resource rule.',
+		},
+		{
+			name: 'List Rules',
+			method: 'GET',
+			path: '/resource/{resourceId}/rules',
+			description: 'List rules for a resource.',
+		},
+		{
+			name: 'Set Header Auth',
+			method: 'POST',
+			path: '/resource/{resourceId}/header-auth',
+			description:
+				'Set or update the header authentication for a resource. If user and password is not provided, it will remove the header authentication.',
+			example: {
+				user: 'proxyuser',
+				password: 'proxypass',
+			},
+		},
+		{
+			name: 'Set Users for Resource',
+			method: 'POST',
+			path: '/resource/{resourceId}/users',
+			description:
+				'Set users for a resource. This will replace all existing users.',
+			example: {
+				userIds: ['user-1', 'user-2'],
+			},
+		},
+		{
+			name: 'List Users for Resource',
+			method: 'GET',
+			path: '/resource/{resourceId}/users',
+			description: 'List all users for a resource.',
+		},
+		{
+			name: 'Set Roles for Resource',
+			method: 'POST',
+			path: '/resource/{resourceId}/roles',
+			description:
+				'Set roles for a resource. This will replace all existing roles.',
+			example: {
+				roleIds: [1, 2, 3],
+			},
+		},
+		{
+			name: 'List Roles for Resource',
+			method: 'GET',
+			path: '/resource/{resourceId}/roles',
+			description: 'List all roles for a resource.',
+		},
+		{
+			name: 'Generate Access Token',
+			method: 'POST',
+			path: '/resource/{resourceId}/access-token',
+			description: 'Generate a new access token for a resource.',
+			example: {
+				validForSeconds: 3600,
+				title: 'My Token',
+				description: 'Automation access',
+			},
+		},
+		{
+			name: 'List Resource Access Tokens',
+			method: 'GET',
+			path: '/resource/{resourceId}/access-tokens',
+			description: 'List all access tokens in an organization.',
+		},
+	],
+
+	Target: [
+		{
+			name: 'Get Target',
+			method: 'GET',
+			path: '/target/{targetId}',
+			description: 'Get a target.',
+		},
+		{
+			name: 'Delete Target',
+			method: 'DELETE',
+			path: '/target/{targetId}',
+			description: 'Delete a target.',
+		},
+		{
+			name: 'Update Target',
+			method: 'POST',
+			path: '/target/{targetId}',
+			description: 'Update a target.',
+			example: {
+				siteId: 1,
+				ip: '10.0.0.10',
+				method: 'GET',
+				port: 443,
+				enabled: true,
+				hcEnabled: true,
+				hcPath: '/health',
+				hcScheme: 'https',
+				hcMode: 'active',
+				hcHostname: 'backend.local',
+				hcPort: 443,
+				hcInterval: 10,
+				hcUnhealthyInterval: 10,
+				hcTimeout: 5,
+				hcHeaders: [{ name: 'User-Agent', value: 'pangolin-health' }],
+				hcFollowRedirects: true,
+				hcMethod: 'GET',
+				hcStatus: 200,
+				path: '/',
+				pathMatchType: 'prefix',
+				rewritePath: '/',
+				rewritePathType: 'stripPrefix',
+				priority: 100,
+			},
+		},
+	],
+
+	Domain: [
+		{
+			name: 'Get Domain',
+			method: 'GET',
+			path: '/org/{orgId}/domain/{domainId}',
+			description: 'Get a domain by domainId.',
+		},
+		{
+			name: 'Update Domain',
+			method: 'PATCH',
+			path: '/org/{orgId}/domain/{domainId}',
+			description: 'Update a domain by domainId.',
+		},
+		{
+			name: 'List Domain DNS Records',
+			method: 'GET',
+			path: '/org/{orgId}/domain/{domainId}/dns-records',
+			description: 'Get all DNS records for a domain by domainId.',
+		},
+	],
+
+	Role: [
+		{
+			name: 'Create Role',
+			method: 'PUT',
+			path: '/org/{orgId}/role',
+			description: 'Create a role.',
+			example: {
+				name: 'string',
+				description: 'string',
+			},
+		},
+		{
+			name: 'List Roles',
+			method: 'GET',
+			path: '/org/{orgId}/roles',
+			description: 'List roles.',
+		},
+		{
+			name: 'Delete Role',
+			method: 'DELETE',
+			path: '/role/{roleId}',
+			description: 'Delete a role.',
+		},
+		{
+			name: 'Get Role',
+			method: 'GET',
+			path: '/role/{roleId}',
+			description: 'Get a role.',
+		},
+		{
+			name: 'Add Role to User',
+			method: 'POST',
+			path: '/role/{roleId}/add/{userId}',
+			description: 'Add a role to a user.',
+		},
+	],
+
+	User: [
+		{
+			name: 'Get User',
+			method: 'GET',
+			path: '/user/{userId}',
+			description: 'Get a user by ID.',
+		},
+		{
+			name: 'Update 2FA',
+			method: 'POST',
+			path: '/user/{userId}/2fa',
+			description: "Update a user's 2FA status.",
+			example: {
+				twoFactorSetupRequested: true,
+			},
+		},
+	],
+
+	Client: [
+		{
+			name: 'Create Client',
+			method: 'PUT',
+			path: '/org/{orgId}/client',
+			description: 'Create a new client.',
+			example: {
+				name: 'string',
+				siteIds: [1],
+				olmId: 'string',
+				secret: 'string',
+				subnet: '100.90.128.0/24',
+				type: 'olm',
+			},
+		},
+		{
+			name: 'Get Client',
+			method: 'GET',
+			path: '/client/{clientId}',
+			description: 'Get a client by its client ID.',
+		},
+		{
+			name: 'Update Client',
+			method: 'POST',
+			path: '/client/{clientId}',
+			description: 'Update a client by its client ID.',
+			example: {
+				name: 'string',
+				siteIds: [1],
+			},
+		},
+		{
+			name: 'Delete Client',
+			method: 'DELETE',
+			path: '/client/{clientId}',
+			description: 'Delete a client by its client ID.',
+		},
+	],
+
+	IdentityProvider: [
+		{
+			name: 'Create OIDC IdP',
+			method: 'PUT',
+			path: '/idp/oidc',
+			description: 'Create an OIDC IdP.',
+			example: {
+				name: 'My IdP',
+				clientId: 'string',
+				clientSecret: 'string',
+				authUrl: 'https://idp.example.com/auth',
+				tokenUrl: 'https://idp.example.com/token',
+				identifierPath: 'sub',
+				emailPath: 'email',
+				namePath: 'name',
+				scopes: 'openid profile email',
+				autoProvision: true,
+			},
+		},
+		{
+			name: 'Update OIDC IdP',
+			method: 'POST',
+			path: '/idp/{idpId}/oidc',
+			description: 'Update an OIDC IdP.',
+			example: {
+				name: 'My IdP',
+				clientId: 'string',
+				clientSecret: 'string',
+				authUrl: 'https://idp.example.com/auth',
+				tokenUrl: 'https://idp.example.com/token',
+				identifierPath: 'sub',
+				emailPath: 'email',
+				namePath: 'name',
+				scopes: 'openid profile email',
+				autoProvision: true,
+				defaultRoleMapping: 'string',
+				defaultOrgMapping: 'string',
+			},
+		},
+		{
+			name: 'Delete IdP',
+			method: 'DELETE',
+			path: '/idp/{idpId}',
+			description: 'Delete IDP.',
+		},
+		{
+			name: 'Get IdP',
+			method: 'GET',
+			path: '/idp/{idpId}',
+			description: 'Get an IDP by its IDP ID.',
+		},
+		{
+			name: 'List IdPs',
+			method: 'GET',
+			path: '/idp',
+			description: 'List all IDP in the system.',
+		},
+		{
+			name: 'Create IdP Org Policy',
+			method: 'PUT',
+			path: '/idp/{idpId}/org/{orgId}',
+			description:
+				'Create an IDP policy for an existing IDP on an organization.',
+			example: {
+				roleMapping: 'string',
+				orgMapping: 'string',
+			},
+		},
+		{
+			name: 'Delete IdP Org Policy',
+			method: 'DELETE',
+			path: '/idp/{idpId}/org/{orgId}',
+			description:
+				'Delete an IDP policy for an existing IDP on an organization.',
+		},
+		{
+			name: 'Update IdP Org Policy',
+			method: 'POST',
+			path: '/idp/{idpId}/org/{orgId}',
+			description: 'Update an IDP org policy.',
+			example: {
+				roleMapping: 'string',
+				orgMapping: 'string',
+			},
+		},
+		{
+			name: 'List IdP Org Policies',
+			method: 'GET',
+			path: '/idp/{idpId}/org',
+			description: 'List all org policies on an IDP.',
+		},
+	],
+
+	AccessToken: [
+		{
+			name: 'Generate Resource Access Token',
+			method: 'POST',
+			path: '/resource/{resourceId}/access-token',
+			description: 'Generate a new access token for a resource.',
+			example: {
+				validForSeconds: 3600,
+				title: 'My Token',
+				description: 'Automation access',
+			},
+		},
+		{
+			name: 'List Org Access Tokens',
+			method: 'GET',
+			path: '/org/{orgId}/access-tokens',
+			description: 'List all access tokens in an organization.',
+		},
+		{
+			name: 'List Resource Access Tokens',
+			method: 'GET',
+			path: '/resource/{resourceId}/access-tokens',
+			description: 'List all access tokens in an organization.',
+		},
+		{
+			name: 'Delete Access Token',
+			method: 'DELETE',
+			path: '/access-token/{accessTokenId}',
+			description: 'Delete a access token.',
+		},
+	],
+
+	ApiKey: [
+		{
+			name: 'List API Keys',
+			method: 'GET',
+			path: '/org/{orgId}/api-keys',
+			description: 'List all API keys for an organization',
+		},
+		{
+			name: 'Create API Key',
+			method: 'PUT',
+			path: '/org/{orgId}/api-key',
+			description: 'Create a new API key scoped to the organization.',
+			example: {
+				name: 'My API Key',
+			},
+		},
+		{
+			name: 'Delete API Key',
+			method: 'DELETE',
+			path: '/org/{orgId}/api-key/{apiKeyId}',
+			description: 'Delete an API key.',
+		},
+		{
+			name: 'List API Key Actions',
+			method: 'GET',
+			path: '/org/{orgId}/api-key/{apiKeyId}/actions',
+			description: 'List all actions set for an API key.',
+		},
+		{
+			name: 'Set API Key Actions',
+			method: 'POST',
+			path: '/org/{orgId}/api-key/{apiKeyId}/actions',
+			description:
+				'Set actions for an API key. This will replace any existing actions.',
+			example: {
+				actionIds: ['string'],
+			},
+		},
+	],
+
+	Blueprint: [
+		{
+			name: 'List Blueprints',
+			method: 'GET',
+			path: '/org/{orgId}/blueprints',
+			description: 'List all blueprints for a organization.',
+		},
+		{
+			name: 'Apply Blueprint',
+			method: 'PUT',
+			path: '/org/{orgId}/blueprint',
+			description: 'Apply a base64 encoded JSON blueprint to an organization',
+			example: {
+				blueprint: 'base64-encoded-json',
+			},
+		},
+		{
+			name: 'Get Blueprint',
+			method: 'GET',
+			path: '/org/{orgId}/blueprint/{blueprintId}',
+			description: 'Get a blueprint by its blueprint ID.',
+		},
+	],
+
+	Invitation: [
+		{
+			name: 'Create Invite',
+			method: 'POST',
+			path: '/org/{orgId}/create-invite',
+			description: 'Invite a user to join an organization.',
+			example: {
+				email: 'user@example.com',
+				roleId: 1,
+				validHours: 24,
+				sendEmail: true,
+				regenerate: false,
+			},
+		},
+		{
+			name: 'List Invitations',
+			method: 'GET',
+			path: '/org/{orgId}/invitations',
+			description: 'List invitations in an organization.',
+		},
+	],
+
+	Health: [
+		{
+			name: 'Health Check',
+			method: 'GET',
+			path: '/',
+			description: 'Health check',
+		},
+	],
+};
 
 export class Pangolin implements INodeType {
 	description: INodeTypeDescription = {
@@ -15,1087 +1006,228 @@ export class Pangolin implements INodeType {
 		icon: 'file:../../icons/pangolin.svg',
 		group: ['transform'],
 		version: 1,
-		subtitle: '={{ $parameter["resource"] + ": " + $parameter["operation"] }}',
-		description: 'Work with a self-hosted Pangolin reverse proxy instance',
-		usableAsTool: true,
+		description: 'Interact with a Pangolin reverse proxy via its REST API',
 		defaults: {
 			name: 'Pangolin',
 		},
+		usableAsTool: true,
 		inputs: ['main'],
 		outputs: ['main'],
 		credentials: [
 			{
-				name: 'pangolinApi',
+				name: 'PangolinApi',
 				required: true,
 			},
 		],
 		properties: [
-			// ------------------------------------------------------------------
-			// Resource header (like Pi-hole "Status", "Summary", etc.)
-			// ------------------------------------------------------------------
 			{
-				displayName: 'Resource',
-				name: 'resource',
+				displayName: 'HTTP Method',
+				name: 'httpMethod',
 				type: 'options',
 				noDataExpression: true,
-				default: 'resource',
 				options: [
 					{
-						name: 'API',
-						value: 'api',
+						name: 'GET',
+						value: 'GET',
+						action: 'Send GET request',
 					},
 					{
-						name: 'Client',
-						value: 'client',
+						name: 'POST',
+						value: 'POST',
+						action: 'Send POST request',
 					},
 					{
-						name: 'Domain',
-						value: 'domain',
+						name: 'PUT',
+						value: 'PUT',
+						action: 'Send PUT request',
 					},
 					{
-						name: 'Resource',
-						value: 'resource',
+						name: 'PATCH',
+						value: 'PATCH',
+						action: 'Send PATCH request',
 					},
 					{
-						name: 'Target',
-						value: 'target',
+						name: 'DELETE',
+						value: 'DELETE',
+						action: 'Send DELETE request',
 					},
 				],
-			},
-
-			// ------------------------------------------------------------------
-			// Operation (actions) under Resource header
-			// Shows as "Resource Actions" in UI
-			// ------------------------------------------------------------------
-			{
-				displayName: 'Operation',
-				name: 'operation',
-				type: 'options',
-				noDataExpression: true,
-				default: 'list',
-				displayOptions: {
-					show: {
-						resource: ['resource'],
-					},
-				},
-				options: [
-					{
-						name: 'Create',
-						value: 'create',
-						action: 'Create resource',
-						description: 'Create a Pangolin resource',
-					},
-					{
-						name: 'Delete',
-						value: 'delete',
-						action: 'Delete resource',
-						description: 'Delete a Pangolin resource',
-					},
-					{
-						name: 'Get',
-						value: 'get',
-						action: 'Get resource',
-						description: 'Get a single Pangolin resource by ID',
-					},
-					{
-						name: 'List',
-						value: 'list',
-						action: 'List resources',
-						description: 'List Pangolin resources',
-					},
-					{
-						name: 'Update',
-						value: 'update',
-						action: 'Update resource',
-						description: 'Update a Pangolin resource',
-					},
-				],
-			},
-
-			// ------------------------------------------------------------------
-			// Operation (actions) under Domain header
-			// Shows as "Domain Actions" in UI
-			// ------------------------------------------------------------------
-			{
-				displayName: 'Operation',
-				name: 'operation',
-				type: 'options',
-				noDataExpression: true,
-				default: 'list',
-				displayOptions: {
-					show: {
-						resource: ['domain'],
-					},
-				},
-				options: [
-					{
-						name: 'Get',
-						value: 'get',
-						action: 'Get domain',
-						description: 'Get a domain by ID [/org/{orgId}/domain/{domainId}]',
-					},
-					{
-						name: 'Get DNS Records',
-						value: 'listDnsRecords',
-						action: 'List DNS records',
-						description: 'List DNS records for a domain [/org/{orgId}/domain/{domainId}]',
-					},
-					{
-						name: 'List',
-						value: 'list',
-						action: 'List domains',
-						description: 'List Pangolin domains [/org/{orgId}/domains]',
-					},
-					{
-						name: 'Update',
-						value: 'update',
-						action: 'Update domain',
-						description: 'Update a Pangolin domain by ID [/org/{orgId}/domain/{domainId}]',
-					},
-				],
-			},
-
-			// ------------------------------------------------------------------
-			// Operation (actions) under Client header
-			// Shows as "Client Actions" in UI
-			// ------------------------------------------------------------------
-			{
-				displayName: 'Operation',
-				name: 'operation',
-				type: 'options',
-				noDataExpression: true,
-				default: 'list',
-				displayOptions: {
-					show: {
-						resource: ['client'],
-					},
-				},
-				options: [
-					{
-						name: 'List',
-						value: 'list',
-						action: 'List clients',
-						description: 'List Pangolin clients',
-					},
-				],
-			},
-
-			// ------------------------------------------------------------------
-			// Operation (actions) under Target header
-			// Shows as "Target Actions" in UI
-			// ------------------------------------------------------------------
-			{
-				displayName: 'Operation',
-				name: 'operation',
-				type: 'options',
-				noDataExpression: true,
-				default: 'get',
-				displayOptions: {
-					show: {
-						resource: ['target'],
-					},
-				},
-				options: [
-					{
-						name: 'Create',
-						value: 'create',
-						action: 'Create target',
-						description: 'Create a target at a given ID',
-					},
-					{
-						name: 'Delete',
-						value: 'delete',
-						action: 'Delete target',
-						description: 'Delete a target by ID',
-					},
-					{
-						name: 'Get',
-						value: 'get',
-						action: 'Get target',
-						description: 'Get a single target by ID',
-					},
-					{
-						name: 'Get From Resource',
-						value: 'getByResource',
-						action: 'Get target from resource',
-						description: 'Get the target associated with a resource',
-					},
-					{
-						name: 'Set For Resource',
-						value: 'setForResource',
-						action: 'Set target for resource',
-						description: 'Create or update the target for a resource',
-					},
-				],
-			},
-
-			// ------------------------------------------------------------------
-			// Operation (actions) under API header
-			// Shows as "API Actions" in UI
-			// ------------------------------------------------------------------
-			{
-				displayName: 'Operation',
-				name: 'operation',
-				type: 'options',
-				noDataExpression: true,
-				default: 'request',
-				displayOptions: {
-					show: {
-						resource: ['api'],
-					},
-				},
-				options: [
-					{
-						name: 'API Request (Raw)',
-						value: 'request',
-						action: 'Request an api',
-						description: 'Make a raw API request to any Pangolin endpoint',
-					},
-				],
-			},
-
-			// ------------------------------------------------------------------
-			// Common: Organization scope (text field, no dropdown)
-			// NOTE: Hidden for Resource "Get" and all Target actions
-			// ------------------------------------------------------------------
-			{
-				displayName: 'Organization ID',
-				name: 'orgId',
-				type: 'string',
-				default: '',
-				required: true,
-				description:
-					'Organization ID from Pangolin (for example, <code>homelab</code>). You can set this from a previous node using an expression.',
-				displayOptions: {
-					show: {
-						resource: ['resource', 'domain', 'client'],
-					},
-					hide: {
-						resource: ['resource'],
-						operation: ['get'],
-					},
-				},
-			},
-
-			// ------------------------------------------------------------------
-			// Resource identifiers / payload (Resource header only)
-			// ------------------------------------------------------------------
-			{
-				displayName: 'Resource ID',
-				name: 'resourceId',
-				type: 'string',
-				default: '',
-				required: true,
-				description:
-					'Numeric resourceId from Pangolin (for example, <code>1</code>). Typically provided by a previous webhook or node.',
-				displayOptions: {
-					show: {
-						resource: ['resource'],
-						operation: ['get', 'update', 'delete'],
-					},
-				},
-			},
-			{
-				displayName: 'Target',
-				name: 'target',
-				type: 'string',
-				default: '',
-				description:
-					'Target for the Pangolin resource (for example, <code>git.example.com:22</code>). You can set this from a previous node using an expression.',
-				displayOptions: {
-					show: {
-						resource: ['resource'],
-						operation: ['create', 'update'],
-					},
-				},
-			},
-			{
-				displayName: 'Body (JSON)',
-				name: 'resourceBody',
-				type: 'json',
-				default: '{}',
-				displayOptions: {
-					show: {
-						resource: ['resource'],
-						operation: ['create', 'update'],
-					},
-				},
-				description:
-					'JSON body for resource create/update (for example, <code>{ "name": "GIT", "protocol": "tcp", "proxyPort": 22 }</code>).',
-			},
-
-			// ------------------------------------------------------------------
-			// Domain identifiers / payload (Domain header only)
-			// ------------------------------------------------------------------
-			{
-				displayName: 'Domain ID',
-				name: 'domainId',
-				type: 'string',
-				default: '',
-				required: true,
-				description: 'Domain ID from Pangolin. Typically provided by a previous webhook or node.',
-				displayOptions: {
-					show: {
-						resource: ['domain'],
-						operation: ['get', 'update', 'listDnsRecords'],
-					},
-				},
-			},
-			{
-				displayName: 'Body (JSON)',
-				name: 'domainBody',
-				type: 'json',
-				default: '{}',
-				description:
-					'JSON body for updating a domain (for example, <code>{ "name": "example.com" }</code>).',
-				displayOptions: {
-					show: {
-						resource: ['domain'],
-						operation: ['update'],
-					},
-				},
-			},
-
-			// ------------------------------------------------------------------
-			// Target identifiers / payload (Target header only)
-			// ------------------------------------------------------------------
-			{
-				displayName: 'Target ID',
-				name: 'targetId',
-				type: 'string',
-				default: '',
-				required: true,
-				description:
-					'Target ID from Pangolin. Typically provided by a previous webhook or node.',
-				displayOptions: {
-					show: {
-						resource: ['target'],
-						operation: ['get', 'delete', 'create'],
-					},
-				},
-			},
-			{
-				displayName: 'Resource ID',
-				name: 'resourceIdForTarget',
-				type: 'string',
-				default: '',
-				required: true,
-				description: 'Resource ID whose target should be retrieved or updated.',
-				displayOptions: {
-					show: {
-						resource: ['target'],
-						operation: ['getByResource', 'setForResource'],
-					},
-				},
-			},
-			{
-				displayName: 'Body (JSON)',
-				name: 'targetBody',
-				type: 'json',
-				default: '{}',
-				displayOptions: {
-					show: {
-						resource: ['target'],
-						operation: ['create', 'setForResource'],
-					},
-				},
-				description:
-					'JSON body for creating or updating a target (for example, <code>{ "name": "My Target", "address": "git.example.com:22" }</code>).',
-			},
-
-			// ------------------------------------------------------------------
-			// List options for Resource / Domain / Client list actions
-			// ------------------------------------------------------------------
-			{
-				displayName: 'Options',
-				name: 'options',
-				type: 'collection',
-				default: {},
-				placeholder: 'Add Option',
-				options: [
-					{
-						displayName: 'Return All',
-						name: 'returnAll',
-						type: 'boolean',
-						default: true,
-						description: 'Whether to return all results or only up to a given limit',
-					},
-					{
-						displayName: 'Limit',
-						name: 'limit',
-						type: 'number',
-						typeOptions: {
-							minValue: 1,
-							maxValue: 100000,
-						},
-						default: 50,
-						description: 'Max number of results to return',
-					},
-				],
-				displayOptions: {
-					show: {
-						resource: ['resource', 'domain', 'client'],
-						operation: ['list', 'listDnsRecords'],
-					},
-				},
-			},
-
-			// ------------------------------------------------------------------
-			// RAW API request action (API header)
-			// ------------------------------------------------------------------
-			{
-				displayName: 'Method',
-				name: 'method',
-				type: 'options',
-				noDataExpression: true,
 				default: 'GET',
-				options: [
-					{ name: 'DELETE', value: 'DELETE' },
-					{ name: 'GET', value: 'GET' },
-					{ name: 'PATCH', value: 'PATCH' },
-					{ name: 'POST', value: 'POST' },
-					{ name: 'PUT', value: 'PUT' },
-				],
-				displayOptions: {
-					show: {
-						resource: ['api'],
-						operation: ['request'],
-					},
-				},
+				description: 'HTTP method to use for the Pangolin API request',
 			},
 			{
-				displayName: 'Endpoint',
+				displayName: 'Endpoint Path',
 				name: 'endpoint',
 				type: 'string',
-				default: '/v1/',
-				placeholder: '/v1/orgs',
-				required: true,
-				displayOptions: {
-					show: {
-						resource: ['api'],
-						operation: ['request'],
-					},
-				},
+				default: '/orgs',
+				placeholder: '/orgs',
+				description:
+					"Endpoint path relative to /v1 (for example, '/orgs', '/org/{orgId}/resources', '/resource/{resourceId}').",
 			},
 			{
 				displayName: 'Query Parameters',
-				name: 'queryParametersUi',
-				placeholder: 'Add Parameter',
+				name: 'queryParameters',
 				type: 'fixedCollection',
+				default: {},
 				typeOptions: {
 					multipleValues: true,
 				},
-				default: {},
+				placeholder: 'Add Query Parameter',
+				description: 'Query string parameters to send with the request',
 				options: [
 					{
-						name: 'parameter',
 						displayName: 'Parameter',
-						values: [
-							{
-								displayName: 'Key',
-								name: 'name',
-								type: 'string',
-								default: '',
-								required: true,
-							},
-							{
-								displayName: 'Value',
-								name: 'value',
-								type: 'string',
-								default: '',
-							},
-						],
-					},
-				],
-				displayOptions: {
-					show: {
-						resource: ['api'],
-						operation: ['request'],
-					},
-				},
-			},
-			{
-				displayName: 'Headers',
-				name: 'headersUi',
-				placeholder: 'Add Header',
-				type: 'fixedCollection',
-				typeOptions: {
-					multipleValues: true,
-				},
-				default: {},
-				options: [
-					{
-						name: 'header',
-						displayName: 'Header',
+						name: 'parameter',
 						values: [
 							{
 								displayName: 'Name',
 								name: 'name',
 								type: 'string',
 								default: '',
-								required: true,
+								placeholder: 'limit',
 							},
 							{
 								displayName: 'Value',
 								name: 'value',
 								type: 'string',
 								default: '',
+								placeholder: '1000',
 							},
 						],
 					},
 				],
-				displayOptions: {
-					show: {
-						resource: ['api'],
-						operation: ['request'],
-					},
-				},
-			},
-			{
-				displayName: 'Send Body',
-				name: 'sendBody',
-				type: 'boolean',
-				default: false,
-				displayOptions: {
-					show: {
-						resource: ['api'],
-						operation: ['request'],
-						method: ['POST', 'PUT', 'PATCH', 'DELETE'],
-					},
-				},
-				description: 'Whether to include a request body',
-			},
-			{
-				displayName: 'JSON Parameters',
-				name: 'jsonParameters',
-				type: 'boolean',
-				default: true,
-				displayOptions: {
-					show: {
-						resource: ['api'],
-						operation: ['request'],
-						sendBody: [true],
-					},
-				},
-				description: 'Whether the body is a raw JSON object',
 			},
 			{
 				displayName: 'Body (JSON)',
-				name: 'bodyJson',
-				type: 'json',
-				default: '{}',
-				displayOptions: {
-					show: {
-						resource: ['api'],
-						operation: ['request'],
-						sendBody: [true],
-						jsonParameters: [true],
-					},
-				},
-				description: 'Raw JSON body',
-			},
-			{
-				displayName: 'Body Fields',
-				name: 'bodyUi',
-				placeholder: 'Add Field',
-				type: 'fixedCollection',
+				name: 'jsonBody',
+				type: 'string',
 				typeOptions: {
-					multipleValues: true,
+					rows: 6,
 				},
-				default: {},
-				options: [
-					{
-						name: 'field',
-						displayName: 'Field',
-						values: [
-							{
-								displayName: 'Field Name',
-								name: 'name',
-								type: 'string',
-								default: '',
-								required: true,
-							},
-							{
-								displayName: 'Field Value',
-								name: 'value',
-								type: 'string',
-								default: '',
-							},
-						],
-					},
-				],
-				displayOptions: {
-					show: {
-						resource: ['api'],
-						operation: ['request'],
-						sendBody: [true],
-						jsonParameters: [false],
-					},
-				},
+				default: '',
+				placeholder: '{\n  "name": "string"\n}',
+				description:
+					'JSON body to send with the request. Leave empty for endpoints without a request body. Example payloads for each endpoint are available inside the node implementation.',
 			},
 			{
-				displayName: 'Options',
+				displayName: 'Raw HTTP Options',
 				name: 'rawOptions',
 				type: 'collection',
-				default: {},
 				placeholder: 'Add Option',
+				default: {},
 				options: [
 					{
-						displayName: 'Return All',
-						name: 'returnAll',
+						displayName: 'Ignore SSL Issues',
+						name: 'ignoreSslIssues',
 						type: 'boolean',
-						default: true,
-						description: 'Whether to return all results or only up to a given limit',
+						default: false,
+						description:
+							'Whether to ignore SSL certificate issues when connecting to Pangolin',
 					},
 					{
-						displayName: 'Limit',
-						name: 'limit',
-						type: 'number',
-						typeOptions: {
-							minValue: 1,
-							maxValue: 100000,
-						},
-						default: 50,
-						description: 'Max number of results to return',
+						displayName: 'Resolve Path Placeholders from Item',
+						name: 'resolvePathFromItem',
+						type: 'boolean',
+						default: false,
+						description:
+							'Whether to resolve {placeholders} in the endpoint path from the input item fields',
 					},
 				],
-				displayOptions: {
-					show: {
-						resource: ['api'],
-						operation: ['request'],
-					},
-				},
 			},
 		],
 	};
 
-	async execute(this: IExecuteFunctions) {
+	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
 		const returnData: INodeExecutionData[] = [];
 
 		for (let i = 0; i < items.length; i++) {
-			try {
-				const resource = this.getNodeParameter('resource', i) as string;
-				const operation = this.getNodeParameter('operation', i) as string;
+			const method = this.getNodeParameter('httpMethod', i) as string;
+			let endpoint = this.getNodeParameter('endpoint', i) as string;
+			const queryParameters = this.getNodeParameter(
+				'queryParameters',
+				i,
+				{},
+			) as IDataObject;
+			const jsonBody = this.getNodeParameter('jsonBody', i, '') as string;
+			const rawOptions = this.getNodeParameter('rawOptions', i, {}) as IDataObject;
 
-				// --------------------------------------------------------------
-				// Resource actions (Resource header)
-				// --------------------------------------------------------------
-				if (resource === 'resource') {
-					// List, Create, Update, Delete all need orgId
-					if (['list', 'create', 'update', 'delete'].includes(operation)) {
-						const orgId = this.getNodeParameter('orgId', i) as string;
+			const qs: IDataObject = {};
+			const qpCollection = (queryParameters.parameter as IDataObject[]) || [];
 
-						// List resources -> /v1/org/{orgId}/resources
-						if (operation === 'list') {
-							const options = this.getNodeParameter('options', i, {}) as IDataObject;
-							const returnAll = options.returnAll !== false;
-							const limit = Number(options.limit ?? 50);
+			for (const qp of qpCollection) {
+				const name = (qp.name as string) || '';
+				if (!name) continue;
+				qs[name] = qp.value;
+			}
 
-							const res = (await pangolinApiRequest.call(
-								this,
-								'GET',
-								`/v1/org/${orgId}/resources`,
-							)) as IDataObject | IDataObject[];
-
-							let resources: IDataObject[] = [];
-
-							if (Array.isArray(res)) {
-								resources = res;
-							} else if (res.data && (res.data as IDataObject).resources) {
-								const data = res.data as IDataObject;
-								if (Array.isArray(data.resources)) {
-									resources = data.resources as IDataObject[];
-								}
-							} else {
-								resources = [res];
-							}
-
-							const out = returnAll ? resources : resources.slice(0, limit);
-
-							for (const r of out) {
-								returnData.push({ json: (r ?? {}) as IDataObject });
-							}
-
-							continue;
-						}
-
-						// Create resource -> /v1/org/{orgId}/resources
-						if (operation === 'create') {
-							const body = (this.getNodeParameter('resourceBody', i) as IDataObject) || {};
-							const target = this.getNodeParameter('target', i, '') as string;
-
-							if (target && typeof body === 'object') {
-								(body as IDataObject).target = target;
-							}
-
-							const res = await pangolinApiRequest.call(
-								this,
-								'POST',
-								`/v1/org/${orgId}/resources`,
-								body,
-							);
-							returnData.push({ json: (res ?? {}) as IDataObject });
-							continue;
-						}
-
-						// Update resource -> /v1/org/{orgId}/resources/{resourceId}
-						if (operation === 'update') {
-							const resourceId = this.getNodeParameter('resourceId', i) as string;
-							const body = (this.getNodeParameter('resourceBody', i) as IDataObject) || {};
-							const target = this.getNodeParameter('target', i, '') as string;
-
-							if (target && typeof body === 'object') {
-								(body as IDataObject).target = target;
-							}
-
-							const res = await pangolinApiRequest.call(
-								this,
-								'PATCH',
-								`/v1/org/${orgId}/resources/${resourceId}`,
-								body,
-							);
-							returnData.push({ json: (res ?? {}) as IDataObject });
-							continue;
-						}
-
-						// Delete resource -> /v1/org/{orgId}/resources/{resourceId}
-						if (operation === 'delete') {
-							const resourceId = this.getNodeParameter('resourceId', i) as string;
-							const res = await pangolinApiRequest.call(
-								this,
-								'DELETE',
-								`/v1/org/${orgId}/resources/${resourceId}`,
-							);
-							returnData.push({ json: (res ?? {}) as IDataObject });
-							continue;
-						}
-					}
-
-					// Get resource -> /v1/resource/{resourceId} (no orgId)
-					if (operation === 'get') {
-						const resourceId = this.getNodeParameter('resourceId', i) as string;
-						const res = await pangolinApiRequest.call(
-							this,
-							'GET',
-							`/v1/resource/${resourceId}`,
-						);
-						returnData.push({ json: (res ?? {}) as IDataObject });
-						continue;
-					}
-				}
-
-				// --------------------------------------------------------------
-				// Domain actions (Domain header) - require orgId
-				// --------------------------------------------------------------
-				if (resource === 'domain') {
-					const orgId = this.getNodeParameter('orgId', i) as string;
-
-					if (operation === 'list') {
-						const options = this.getNodeParameter('options', i, {}) as IDataObject;
-						const returnAll = options.returnAll !== false;
-						const limit = Number(options.limit ?? 50);
-
-						const res = (await pangolinApiRequest.call(
-							this,
-							'GET',
-							`/v1/org/${orgId}/domains`,
-						)) as IDataObject | IDataObject[];
-
-						let domains: IDataObject[] = [];
-
-						if (Array.isArray(res)) {
-							domains = res;
-						} else if (res.data && (res.data as IDataObject).domains) {
-							const data = res.data as IDataObject;
-							if (Array.isArray(data.domains)) {
-								domains = data.domains as IDataObject[];
-							}
-						} else {
-							domains = [res];
-						}
-
-						const out = returnAll ? domains : domains.slice(0, limit);
-
-						for (const d of out) {
-							returnData.push({ json: (d ?? {}) as IDataObject });
-						}
-
-						continue;
-					}
-
-					if (operation === 'get') {
-						const domainId = this.getNodeParameter('domainId', i) as string;
-						const res = await pangolinApiRequest.call(
-							this,
-							'GET',
-							`/v1/org/${orgId}/domain/${domainId}`,
-						);
-						returnData.push({ json: (res ?? {}) as IDataObject });
-						continue;
-					}
-
-					if (operation === 'update') {
-						const domainId = this.getNodeParameter('domainId', i) as string;
-						const body = (this.getNodeParameter('domainBody', i) as IDataObject) || {};
-						const res = await pangolinApiRequest.call(
-							this,
-							'PATCH',
-							`/v1/org/${orgId}/domain/${domainId}`,
-							body,
-						);
-						returnData.push({ json: (res ?? {}) as IDataObject });
-						continue;
-					}
-
-					if (operation === 'listDnsRecords') {
-						const domainId = this.getNodeParameter('domainId', i) as string;
-						const options = this.getNodeParameter('options', i, {}) as IDataObject;
-						const returnAll = options.returnAll !== false;
-						const limit = Number(options.limit ?? 50);
-
-						const res = (await pangolinApiRequest.call(
-							this,
-							'GET',
-							`/v1/org/${orgId}/domain/${domainId}/dns-records`,
-						)) as IDataObject | IDataObject[];
-
-						let dnsRecords: IDataObject[] = [];
-
-						if (Array.isArray(res)) {
-							dnsRecords = res;
-						} else if (res.data && (res.data as IDataObject).dnsRecords) {
-							const data = res.data as IDataObject;
-							if (Array.isArray(data.dnsRecords)) {
-								dnsRecords = data.dnsRecords as IDataObject[];
-							}
-						} else {
-							dnsRecords = [res];
-						}
-
-						const out = returnAll ? dnsRecords : dnsRecords.slice(0, limit);
-
-						for (const record of out) {
-							returnData.push({ json: (record ?? {}) as IDataObject });
-						}
-
-						continue;
-					}
-				}
-
-				// --------------------------------------------------------------
-				// Client actions (Client header) - require orgId
-				// --------------------------------------------------------------
-				if (resource === 'client' && operation === 'list') {
-					const orgId = this.getNodeParameter('orgId', i) as string;
-					const options = this.getNodeParameter('options', i, {}) as IDataObject;
-					const returnAll = options.returnAll !== false;
-					const limit = Number(options.limit ?? 50);
-
-					const res = (await pangolinApiRequest.call(
+			let body: IDataObject | undefined;
+			if (jsonBody && jsonBody.trim() !== '') {
+				try {
+					body = JSON.parse(jsonBody) as IDataObject;
+				} catch (error) {
+					throw new NodeOperationError(
 						this,
-						'GET',
-						`/v1/org/${orgId}/clients`,
-					)) as IDataObject | IDataObject[];
-
-					let clients: IDataObject[] = [];
-
-					if (Array.isArray(res)) {
-						clients = res;
-					} else if (res.data && (res.data as IDataObject).clients) {
-						const data = res.data as IDataObject;
-						if (Array.isArray(data.clients)) {
-							clients = data.clients as IDataObject[];
-						}
-					} else {
-						clients = [res];
-					}
-
-					const out = returnAll ? clients : clients.slice(0, limit);
-
-					for (const c of out) {
-						returnData.push({ json: (c ?? {}) as IDataObject });
-					}
-
-					continue;
-				}
-
-				// --------------------------------------------------------------
-				// Target actions (Target header)
-				// --------------------------------------------------------------
-				if (resource === 'target') {
-					// GET /target/{targetId}
-					if (operation === 'get') {
-						const targetId = this.getNodeParameter('targetId', i) as string;
-						const res = await pangolinApiRequest.call(
-							this,
-							'GET',
-							`/v1/target/${targetId}`,
-						);
-						returnData.push({ json: (res ?? {}) as IDataObject });
-						continue;
-					}
-
-					// DELETE /target/{targetId}
-					if (operation === 'delete') {
-						const targetId = this.getNodeParameter('targetId', i) as string;
-						const res = await pangolinApiRequest.call(
-							this,
-							'DELETE',
-							`/v1/target/${targetId}`,
-						);
-						returnData.push({ json: (res ?? {}) as IDataObject });
-						continue;
-					}
-
-					// POST /target/{targetId}
-					if (operation === 'create') {
-						const targetId = this.getNodeParameter('targetId', i) as string;
-						const body = (this.getNodeParameter('targetBody', i) as IDataObject) || {};
-						const res = await pangolinApiRequest.call(
-							this,
-							'POST',
-							`/v1/target/${targetId}`,
-							body,
-						);
-						returnData.push({ json: (res ?? {}) as IDataObject });
-						continue;
-					}
-
-					// GET /resource/{resourceId}/target
-					if (operation === 'getByResource') {
-						const resourceIdForTarget = this.getNodeParameter(
-							'resourceIdForTarget',
-							i,
-						) as string;
-						const res = await pangolinApiRequest.call(
-							this,
-							'GET',
-							`/v1/resource/${resourceIdForTarget}/target`,
-						);
-						returnData.push({ json: (res ?? {}) as IDataObject });
-						continue;
-					}
-
-					// PUT /resource/{resourceId}/target
-					if (operation === 'setForResource') {
-						const resourceIdForTarget = this.getNodeParameter(
-							'resourceIdForTarget',
-							i,
-						) as string;
-						const body = (this.getNodeParameter('targetBody', i) as IDataObject) || {};
-						const res = await pangolinApiRequest.call(
-							this,
-							'PUT',
-							`/v1/resource/${resourceIdForTarget}/target`,
-							body,
-						);
-						returnData.push({ json: (res ?? {}) as IDataObject });
-						continue;
-					}
-				}
-
-				// --------------------------------------------------------------
-				// Raw API action (API header)
-				// --------------------------------------------------------------
-				if (resource === 'api' && operation === 'request') {
-					const method = this.getNodeParameter('method', i) as
-						| 'GET'
-						| 'POST'
-						| 'PUT'
-						| 'PATCH'
-						| 'DELETE';
-					const endpoint = this.getNodeParameter('endpoint', i) as string;
-
-					const queryParametersUi = this.getNodeParameter(
-						'queryParametersUi',
-						i,
-						{},
-					) as {
-						parameter?: Array<{ name?: string; value?: string }>;
-					};
-					const qs: IDataObject = {};
-					for (const p of queryParametersUi.parameter ?? []) {
-						if (p?.name) {
-							qs[p.name] = p.value ?? '';
-						}
-					}
-
-					const headersUi = this.getNodeParameter('headersUi', i, {}) as {
-						header?: Array<{ name?: string; value?: string }>;
-					};
-					const headers: IDataObject = {};
-					for (const h of headersUi.header ?? []) {
-						if (h?.name) {
-							headers[h.name] = h.value ?? '';
-						}
-					}
-
-					let body: IDataObject | undefined;
-					const sendBody = this.getNodeParameter('sendBody', i, false) as boolean;
-					if (sendBody) {
-						const jsonParameters = this.getNodeParameter(
-							'jsonParameters',
-							i,
-							true,
-						) as boolean;
-						if (jsonParameters) {
-							body = (this.getNodeParameter('bodyJson', i) as IDataObject) ?? {};
-						} else {
-							const bodyUi = this.getNodeParameter('bodyUi', i, {}) as {
-								field?: Array<{ name?: string; value?: string }>;
-							};
-							body = {};
-							for (const f of bodyUi.field ?? []) {
-								if (f?.name) {
-									body[f.name] = f.value ?? '';
-								}
-							}
-						}
-					}
-
-					const response = await pangolinApiRequest.call(
-						this,
-						method,
-						endpoint,
-						body ?? {},
-						qs,
-						headers,
+						'Invalid JSON in "Body (JSON)" parameter',
+						{ itemIndex: i },
 					);
-
-					const rawOptions = this.getNodeParameter('rawOptions', i, {}) as IDataObject;
-					const returnAll = rawOptions.returnAll !== false;
-					const limit = Number(rawOptions.limit ?? 50);
-
-					if (Array.isArray(response)) {
-						const arr = returnAll ? response : response.slice(0, limit);
-						for (const entry of arr) {
-							returnData.push({ json: (entry ?? {}) as IDataObject });
-						}
-					} else {
-						returnData.push({ json: (response ?? {}) as IDataObject });
-					}
-
-					continue;
 				}
+			}
 
-				// --------------------------------------------------------------
-				// Fallback
-				// --------------------------------------------------------------
-				throw new NodeOperationError(
-					this.getNode(),
-					`Unsupported combination of resource "${resource}" and operation "${operation}"`,
-					{ itemIndex: i },
+			// Resolve placeholders in the path from the current item, if enabled
+			const resolvePathFromItem = rawOptions.resolvePathFromItem === true;
+			if (resolvePathFromItem && endpoint.includes('{')) {
+				const itemJson = items[i].json as IDataObject;
+				endpoint = endpoint.replace(
+					/{([^}]+)}/g,
+					(match: string, key: string) => {
+						const value = itemJson[key];
+						return value !== undefined ? String(value) : match;
+					},
+				);
+			}
+
+			// Build full URL from credentials baseUrl + /v1 + endpoint
+			const credentials = (await this.getCredentials('PangolinApi')) as IDataObject;
+			const baseUrl = (credentials.baseUrl as string).replace(/\/+$/, '');
+
+			let path = endpoint.trim();
+			if (!path.startsWith('/')) {
+				path = `/${path}`;
+			}
+
+			const url = `${baseUrl}/v1${path}`;
+
+			const options: IHttpRequestOptions = {
+				method,
+				url,
+				qs,
+				json: true,
+			};
+
+			if (body !== undefined) {
+				options.body = body;
+			}
+
+			if (rawOptions.ignoreSslIssues === true) {
+				options.rejectUnauthorized = false;
+			}
+
+			let responseData;
+			try {
+				responseData = await this.helpers.requestWithAuthentication.call(
+					this,
+					'PangolinApi',
+					options,
 				);
 			} catch (error) {
-				if (this.continueOnFail()) {
-					returnData.push({ json: { error: (error as Error).message } });
-					continue;
-				}
-				throw new NodeOperationError(this.getNode(), (error as Error).message, {
-					itemIndex: i,
-				});
+				throw new NodeOperationError(this, error as Error, { itemIndex: i });
 			}
+
+			const executionData: INodeExecutionData = {
+				json: responseData as IDataObject,
+			};
+			returnData.push(executionData);
 		}
 
 		return [returnData];
