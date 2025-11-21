@@ -1,9 +1,9 @@
 import {
 	IDataObject,
 	IExecuteFunctions,
+	IHttpRequestMethods,
 	IHttpRequestOptions,
 	INodeExecutionData,
-	INodeProperties,
 	INodeType,
 	INodeTypeDescription,
 	NodeOperationError,
@@ -14,7 +14,7 @@ import {
  */
 type PangolinAction = {
 	name: string;
-	method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+	method: IHttpRequestMethods;
 	path: string;
 	description: string;
 	example?: IDataObject;
@@ -26,8 +26,11 @@ type PangolinAction = {
  * an example JSON body when the endpoint defines a requestBody.
  *
  * Paths are relative to /v1.
+ *
+ * Exported so it is not treated as an unused local and can be
+ * imported by other modules or tests if needed.
  */
-const PANGOLIN_ACTIONS_BY_CATEGORY: Record<string, PangolinAction[]> = {
+export const PANGOLIN_ACTIONS_BY_CATEGORY: Record<string, PangolinAction[]> = {
 	Organization: [
 		{
 			name: 'List Organizations',
@@ -56,7 +59,7 @@ const PANGOLIN_ACTIONS_BY_CATEGORY: Record<string, PangolinAction[]> = {
 			name: 'Delete Organization',
 			method: 'DELETE',
 			path: '/org/{orgId}',
-			description: 'Delete an organization',
+			description: 'Delete an organization.',
 		},
 		{
 			name: 'Update Organization',
@@ -311,7 +314,8 @@ const PANGOLIN_ACTIONS_BY_CATEGORY: Record<string, PangolinAction[]> = {
 			name: 'Apply Blueprint',
 			method: 'PUT',
 			path: '/org/{orgId}/blueprint',
-			description: 'Apply a base64 encoded JSON blueprint to an organization',
+			description:
+				'Apply a base64 encoded JSON blueprint to an organization',
 			example: {
 				blueprint: 'base64-encoded-json',
 			},
@@ -954,7 +958,8 @@ const PANGOLIN_ACTIONS_BY_CATEGORY: Record<string, PangolinAction[]> = {
 			name: 'Apply Blueprint',
 			method: 'PUT',
 			path: '/org/{orgId}/blueprint',
-			description: 'Apply a base64 encoded JSON blueprint to an organization',
+			description:
+				'Apply a base64 encoded JSON blueprint to an organization',
 			example: {
 				blueprint: 'base64-encoded-json',
 			},
@@ -1142,7 +1147,7 @@ export class Pangolin implements INodeType {
 		const returnData: INodeExecutionData[] = [];
 
 		for (let i = 0; i < items.length; i++) {
-			const method = this.getNodeParameter('httpMethod', i) as string;
+			const method = this.getNodeParameter('httpMethod', i) as IHttpRequestMethods;
 			let endpoint = this.getNodeParameter('endpoint', i) as string;
 			const queryParameters = this.getNodeParameter(
 				'queryParameters',
@@ -1167,7 +1172,7 @@ export class Pangolin implements INodeType {
 					body = JSON.parse(jsonBody) as IDataObject;
 				} catch (error) {
 					throw new NodeOperationError(
-						this,
+						this.getNode(),
 						'Invalid JSON in "Body (JSON)" parameter',
 						{ itemIndex: i },
 					);
@@ -1210,18 +1215,21 @@ export class Pangolin implements INodeType {
 			}
 
 			if (rawOptions.ignoreSslIssues === true) {
-				options.rejectUnauthorized = false;
+				// `rejectUnauthorized` is not in IHttpRequestOptions type, so we cast.
+				(options as any).rejectUnauthorized = false;
 			}
 
 			let responseData;
 			try {
 				responseData = await this.helpers.requestWithAuthentication.call(
-					this,
+					this as any,
 					'PangolinApi',
 					options,
 				);
 			} catch (error) {
-				throw new NodeOperationError(this, error as Error, { itemIndex: i });
+				throw new NodeOperationError(this.getNode(), error as Error, {
+					itemIndex: i,
+				});
 			}
 
 			const executionData: INodeExecutionData = {
