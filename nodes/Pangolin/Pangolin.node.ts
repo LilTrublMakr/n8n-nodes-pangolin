@@ -182,31 +182,31 @@ export class Pangolin implements INodeType {
 						name: 'Create',
 						value: 'create',
 						action: 'Create target',
-						description: 'Create a target at a given ID',
+						description: 'Create a target at a given ID [/target/{targetId}]',
 					},
 					{
 						name: 'Delete',
 						value: 'delete',
 						action: 'Delete target',
-						description: 'Delete a target by ID',
+						description: 'Delete a target by ID [/target/{targetId}]',
 					},
 					{
 						name: 'Get',
 						value: 'get',
 						action: 'Get target',
-						description: 'Get a single target by ID',
+						description: 'Get a single target by ID [/target/{targetId}]',
 					},
 					{
 						name: 'Get From Resource',
 						value: 'getByResource',
 						action: 'Get target from resource',
-						description: 'Get the target associated with a resource',
+						description: 'Get targets associated with a resource [/resource/{resourceId}/targets]',
 					},
 					{
 						name: 'Set For Resource',
 						value: 'setForResource',
 						action: 'Set target for resource',
-						description: 'Create or update the target for a resource',
+						description: 'Create or update the target for a resource [/resource/{resourceId}/target]',
 					},
 				],
 			},
@@ -858,7 +858,7 @@ export class Pangolin implements INodeType {
 						const res = await pangolinApiRequest.call(
 							this,
 							'GET',
-							`/v1/resource/${resourceIdForTarget}/target`,
+							`/v1/resource/${resourceIdForTarget}/targets`,
 						);
 						returnData.push({ json: (res ?? {}) as IDataObject });
 						continue;
