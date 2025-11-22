@@ -35,6 +35,36 @@ const PANGOLIN_ACTIONS: { [category: string]: PangolinAction[] } = {
 			method: 'PUT',
 			path: '/org/{orgId}/resource',
 			description: 'Create a resource.',
+			bodyExample: `{
+  "siteId": 1,
+  "ip": "string",
+  "method": "string",
+  "port": 65535,
+  "enabled": true,
+  "hcEnabled": true,
+  "hcPath": "string",
+  "hcScheme": "string",
+  "hcMode": "string",
+  "hcHostname": "string",
+  "hcPort": 1,
+  "hcInterval": 6,
+  "hcUnhealthyInterval": 6,
+  "hcTimeout": 2,
+  "hcHeaders": [
+    {
+      "name": "string",
+      "value": "string"
+    }
+  ],
+  "hcFollowRedirects": true,
+  "hcMethod": "string",
+  "hcStatus": 0,
+  "path": "string",
+  "pathMatchType": "exact",
+  "rewritePath": "string",
+  "rewritePathType": "exact",
+  "priority": 1000
+}`
 		},
 		{
 			key: 'listOrgResources',
