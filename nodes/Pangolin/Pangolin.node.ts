@@ -1170,7 +1170,7 @@ for (const cfg of endpointConfigs.filter((c) => c.hasBody)) {
 		displayName: 'Body',
 		name: 'body',
 		type: 'json',
-		default: cfg.bodyDefault ?? '{\n\t\n}',
+		default: 'undefined',
 		description: `Request body for ${cfg.method} ${cfg.path}`,
 		displayOptions: {
 			show: {
