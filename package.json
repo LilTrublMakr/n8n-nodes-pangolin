@@ -1,6 +1,6 @@
 {
 	"name": "n8n-nodes-pangolin",
-	"version": "1.0.0",
+	"version": "0.0.1",
 	"description": "n8n node to connect and use the Pangolin API",
 	"license": "MIT",
 	"homepage": "https://github.com/LilTrublMakr/n8n-nodes-pangolin",
