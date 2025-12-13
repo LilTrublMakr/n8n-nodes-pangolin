@@ -50,7 +50,7 @@ This node has been created on N8N version 1.118 and Pangolin 1.12. Prior version
 - [n8n community nodes documentation](https://docs.n8n.io/integrations/#community-nodes)
 - [Pangolin Home Page](https://pangolin.net/)
 - [Pangolin Docs](https://docs.pangolin.net/)
-- [Pangolin API Documentation](https://pangapi.ltm56.xyz/v1/docs/)
+- [Pangolin API Documentation](https://api.pangolin.net/v1/docs/)
 - [Pangolin Github](https://github.com/fosrl/pangolin)
 
 ## Version history
